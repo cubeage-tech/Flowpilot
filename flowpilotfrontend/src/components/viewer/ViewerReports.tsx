@@ -1,8 +1,19 @@
 import React, { useState } from 'react';
-import { Eye, X, FileText } from 'lucide-react';
+import {
+  Eye,
+  X,
+  FileText,
+  FolderKanban,
+  ListChecks,
+  TrendingUp,
+  Bug,
+  Users,
+  Rocket,
+  LockKeyhole,
+} from 'lucide-react';
 
 interface Report {
-  icon: string;
+  icon: React.ElementType;
   title: string;
   description: string;
   details: string;
@@ -14,7 +25,7 @@ export const ViewerReports: React.FC = () => {
 
   const reports: Report[] = [
     {
-      icon: '📁',
+      icon: FolderKanban,
       title: 'Project Status Overview',
       description:
         'High-level view of all active projects and their health',
@@ -28,7 +39,7 @@ export const ViewerReports: React.FC = () => {
       ],
     },
     {
-      icon: '🏃',
+      icon: ListChecks,
       title: 'Sprint Progress Summary',
       description:
         'Task completion by sprint across all projects',
@@ -42,7 +53,7 @@ export const ViewerReports: React.FC = () => {
       ],
     },
     {
-      icon: '📈',
+      icon: TrendingUp,
       title: 'Team Productivity',
       description:
         'Story points completed and velocity trend',
@@ -56,7 +67,7 @@ export const ViewerReports: React.FC = () => {
       ],
     },
     {
-      icon: '🐛',
+      icon: Bug,
       title: 'Bug Trend Report',
       description:
         'Open vs. resolved bugs over time',
@@ -70,7 +81,7 @@ export const ViewerReports: React.FC = () => {
       ],
     },
     {
-      icon: '👥',
+      icon: Users,
       title: 'Resource Allocation',
       description:
         'Team workload distribution across projects',
@@ -84,7 +95,7 @@ export const ViewerReports: React.FC = () => {
       ],
     },
     {
-      icon: '🚀',
+      icon: Rocket,
       title: 'Release Readiness',
       description:
         'Go-live checklist status for upcoming releases',
@@ -155,9 +166,11 @@ export const ViewerReports: React.FC = () => {
 
           <div className="flex items-start gap-3 text-xs font-medium leading-5 text-slate-500">
 
-            <span className="shrink-0 text-sm">
-              📄
-            </span>
+            <FileText
+              size={16}
+              strokeWidth={2}
+              className="shrink-0 text-slate-500"
+            />
 
             <span>
               As a Viewer, you can view but not download or export reports.
@@ -198,13 +211,12 @@ export const ViewerReports: React.FC = () => {
 
               {/* ICON */}
               <div className="mb-4 flex h-8 w-8 items-center justify-start">
-                <span
-                  className="text-[24px] leading-none"
-                  role="img"
+               <report.icon
+                  size={32}
+                  strokeWidth={2}
+                  className="text-slate-700"
                   aria-label={`${report.title} icon`}
-                >
-                  {report.icon}
-                </span>
+                />
               </div>
 
 
@@ -264,7 +276,10 @@ export const ViewerReports: React.FC = () => {
                     text-slate-300
                   "
                 >
-                  Export 🔒
+                  <span className="flex items-center gap-1.5">
+                    Export
+                    <LockKeyhole size={13} strokeWidth={2} />
+                  </span>
                 </button>
 
               </div>
@@ -343,9 +358,11 @@ export const ViewerReports: React.FC = () => {
             <div className="pr-10">
 
               <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50">
-                <span className="text-2xl">
-                  {selectedReport.icon}
-                </span>
+                <selectedReport.icon
+                  size={24}
+                  strokeWidth={2}
+                  className="text-emerald-600"
+                />
               </div>
 
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">

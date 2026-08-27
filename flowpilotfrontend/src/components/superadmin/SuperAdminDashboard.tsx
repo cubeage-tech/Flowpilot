@@ -1,117 +1,185 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Plus, FileText, Settings } from 'lucide-react';
 
 interface SuperAdminDashboardProps {
   onNavigate?: (tab: string) => void;
 }
 
-const recentUsers = [
-  {
-    name: 'Rajeev Kumar',
-    role: 'Super Admin',
-    department: 'Leadership',
-    time: '2 min ago',
-    initials: 'RK',
-  },
-  {
-    name: 'Nisha Agarwal',
-    role: 'Admin',
-    department: 'Operations',
-    time: '12 min ago',
-    initials: 'NA',
-  },
-  {
-    name: 'Arjun Shah',
-    role: 'Project Manager',
-    department: 'Product',
-    time: '1h ago',
-    initials: 'AS',
-  },
-  {
-    name: 'Aryan Kapoor',
-    role: 'Scrum Master',
-    department: 'Engineering',
-    time: '30 min ago',
-    initials: 'AK',
-  },
-  {
-    name: 'Sneha Rao',
-    role: 'Developer',
-    department: 'Engineering',
-    time: '5 min ago',
-    initials: 'SR',
-  },
-];
+interface DashboardRecentUser {
+  name: string;
+  role: string;
+  department: string;
+  createdAt: string;
+  initials?: string;
+}
 
-const systemHealth = [
-  {
-    name: 'Database',
-    value: 99,
-    color: '#10b981',
-    textColor: '#10b981',
-  },
-  {
-    name: 'API Server',
-    value: 100,
-    color: '#10b981',
-    textColor: '#10b981',
-  },
-  {
-    name: 'Storage',
-    value: 67,
-    color: '#f59e0b',
-    textColor: '#f59e0b',
-  },
-  {
-    name: 'Email Service',
-    value: 100,
-    color: '#10b981',
-    textColor: '#10b981',
-  },
-  {
-    name: 'Auth Service',
-    value: 100,
-    color: '#10b981',
-    textColor: '#10b981',
-  },
-  {
-    name: 'File CDN',
-    value: 88,
-    color: '#38bdf8',
-    textColor: '#38bdf8',
-  },
-];
+interface DashboardHealth {
+  name: string;
+  value?: number;
+  status?: string;
+}
 
-const statistics = [
-  {
-    title: 'TOTAL USERS',
-    value: '48',
-    footer: '↑ 3 this week',
-    footerColor: '#10b981',
-  },
-  {
-    title: 'DEPARTMENTS',
-    value: '6',
-    footer: 'All active',
-    footerColor: '#10b981',
-  },
-  {
-    title: 'ACTIVE PROJECTS',
-    value: '24',
-    footer: '5 at risk',
-    footerColor: '#f59e0b',
-  },
-  {
-    title: 'SYSTEM UPTIME',
-    value: '99.9%',
-    footer: 'Last 30 days',
-    footerColor: '#10b981',
-  },
-];
+interface DashboardData {
+  totalUsers: number;
+  departments: number;
+  activeProjects: number;
+  systemUptime: string;
+  recentUsers: DashboardRecentUser[];
+  systemHealth: DashboardHealth[];
+}
 
 export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
   onNavigate,
 }) => {
+  const [dashboardData, setDashboardData] =
+    useState<DashboardData | null>(null);
+
+  const [dashboardError, setDashboardError] =
+    useState<string>('');
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        const token = localStorage.getItem('token');
+
+        const response = await fetch(
+          'http://localhost:8080/api/superadmin/dashboard',
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token
+                ? { Authorization: `Bearer ${token}` }
+                : {}),
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard data');
+        }
+
+        const data: DashboardData =
+          await response.json();
+
+        setDashboardData(data);
+        setDashboardError('');
+      } catch (error) {
+        console.error(
+          'Error loading Super Admin dashboard:',
+          error
+        );
+
+        setDashboardError(
+          'Unable to load dashboard data'
+        );
+      }
+    };
+
+    fetchDashboard();
+  }, []);
+
+  const getInitials = (name: string): string => {
+    return name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(
+        (part) => part.charAt(0).toUpperCase()
+      )
+      .join('');
+  };
+
+  const formatRelativeTime = (
+    createdAt: string
+  ): string => {
+    const createdDate =
+      new Date(createdAt);
+
+    const now = new Date();
+
+    const differenceInSeconds = Math.floor(
+      (now.getTime() -
+        createdDate.getTime()) /
+        1000
+    );
+
+    if (differenceInSeconds < 60) {
+      return `${Math.max(
+        0,
+        differenceInSeconds
+      )} sec ago`;
+    }
+
+    const differenceInMinutes = Math.floor(
+      differenceInSeconds / 60
+    );
+
+    if (differenceInMinutes < 60) {
+      return `${differenceInMinutes} min ago`;
+    }
+
+    const differenceInHours = Math.floor(
+      differenceInMinutes / 60
+    );
+
+    if (differenceInHours < 24) {
+      return `${differenceInHours}h ago`;
+    }
+
+    const differenceInDays = Math.floor(
+      differenceInHours / 24
+    );
+
+    return `${differenceInDays}d ago`;
+  };
+
+  const recentUsers =
+    dashboardData?.recentUsers ?? [];
+
+  const systemHealth =
+    dashboardData?.systemHealth ?? [];
+
+  const statistics = [
+    {
+      title: 'TOTAL USERS',
+      value:
+        dashboardData?.totalUsers?.toString() ?? '—',
+      footer: dashboardError
+        ? 'Unavailable'
+        : 'Live data',
+      footerColor: '#10b981',
+    },
+    {
+      title: 'DEPARTMENTS',
+      value:
+        dashboardData?.departments?.toString() ?? '—',
+      footer: dashboardError
+        ? 'Unavailable'
+        : 'All active',
+      footerColor: '#10b981',
+    },
+    {
+      title: 'ACTIVE PROJECTS',
+      value:
+        dashboardData?.activeProjects?.toString() ?? '—',
+      footer: dashboardError
+        ? 'Unavailable'
+        : 'Live data',
+      footerColor: '#10b981',
+    },
+    {
+      title: 'SYSTEM UPTIME',
+      value:
+        dashboardData?.systemUptime ?? '—',
+      footer: dashboardError
+        ? 'Unavailable'
+        : 'Current status',
+      footerColor: '#10b981',
+    },
+  ];
+
   return (
     <div className="w-full min-w-0 font-['Plus_Jakarta_Sans',sans-serif]">
 
@@ -178,7 +246,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
             {recentUsers.map((user) => (
               <div
-                key={user.name}
+                key={`${user.name}-${user.createdAt}`}
                 className="
                   flex
                   min-w-0
@@ -206,7 +274,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       text-white
                     "
                   >
-                    {user.initials}
+                    {user.initials || getInitials(user.name)}
                   </div>
 
                   <div className="min-w-0">
@@ -247,7 +315,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                     text-[#8c94a0]
                   "
                 >
-                  {user.time}
+                  {formatRelativeTime(user.createdAt)}
                 </span>
 
               </div>
@@ -316,10 +384,19 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       font-bold
                     "
                     style={{
-                      color: service.textColor,
+                      color:
+                        service.status === 'DOWN'
+                          ? '#ef4444'
+                          : '#10b981',
                     }}
                   >
-                    {service.value}%
+                    {typeof service.value === 'number'
+                      ? `${service.value}%`
+                      : service.status === 'UP'
+                        ? '100%'
+                        : service.status === 'DOWN'
+                          ? '0%'
+                          : 'N/A'}
                   </span>
                 </div>
 
@@ -340,8 +417,17 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
                       duration-300
                     "
                     style={{
-                      width: `${service.value}%`,
-                      backgroundColor: service.color,
+                      width: `${
+                        typeof service.value === 'number'
+                          ? service.value
+                          : service.status === 'UP'
+                            ? 100
+                            : 0
+                      }%`,
+                      backgroundColor:
+                        service.status === 'DOWN'
+                          ? '#ef4444'
+                          : '#10b981',
                     }}
                   />
                 </div>

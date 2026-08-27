@@ -42,67 +42,73 @@ export const DeveloperDashboardView: React.FC<
           TOP STAT CARDS
           ===================================================== */}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Card 1 */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-400">
-            TASKS THIS SPRINT
-          </div>
+      {/* =====================================================
+    TOP STAT CARDS
+    ===================================================== */}
 
-          <div className="mb-2 text-[25px] font-black leading-none text-slate-800">
-            4
-          </div>
+<div className="grid grid-cols-2 gap-3 sm:gap-3 lg:grid-cols-4">
 
-          <div className="text-[12px] font-medium text-cyan-300">
-            1 done · 2 in progress
-          </div>
-        </div>
+  {/* Card 1 */}
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-400">
+      TASKS THIS SPRINT
+    </div>
 
-        {/* Card 2 */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-400">
-            STORY POINTS
-          </div>
+    <div className="mb-2 text-[25px] font-black leading-none text-slate-800">
+      4
+    </div>
 
-          <div className="mb-2 text-[25px] font-bold leading-none text-slate-800">
-            23 SP
-          </div>
+    <div className="text-[12px] font-medium text-cyan-300">
+      1 done · 2 in progress
+    </div>
+  </div>
 
-          <div className="text-[12px] font-medium text-cyan-300">
-            10 SP completed
-          </div>
-        </div>
+  {/* Card 2 */}
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-400">
+      STORY POINTS
+    </div>
 
-        {/* Card 3 */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-400">
-            HOURS THIS WEEK
-          </div>
+    <div className="mb-2 text-[25px] font-bold leading-none text-slate-800">
+      23 SP
+    </div>
 
-          <div className="mb-2 text-[25px] font-bold leading-none text-slate-900">
-            18h
-          </div>
+    <div className="text-[12px] font-medium text-cyan-300">
+      10 SP completed
+    </div>
+  </div>
 
-          <div className="text-[12px] font-medium text-emerald-500">
-            across 5 tasks
-          </div>
-        </div>
+  {/* Card 3 */}
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-400">
+      HOURS THIS WEEK
+    </div>
 
-        {/* Card 4 */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-400">
-            UNREAD MENTIONS
-          </div>
+    <div className="mb-2 text-[25px] font-bold leading-none text-slate-900">
+      18h
+    </div>
 
-          <div className="mb-2 text-[25px] font-bold leading-none text-slate-800">
-            2
-          </div>
+    <div className="text-[12px] font-medium text-emerald-500">
+      across 5 tasks
+    </div>
+  </div>
 
-          <div className="text-[12px] font-medium text-purple-400">
-            Need your attention
-          </div>
-        </div>
-      </div>
+  {/* Card 4 */}
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+    <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-400">
+      UNREAD MENTIONS
+    </div>
+
+    <div className="mb-2 text-[25px] font-bold leading-none text-slate-800">
+      2
+    </div>
+
+    <div className="text-[12px] font-medium text-purple-400">
+      Need your attention
+    </div>
+  </div>
+
+</div>
 
       {/* =====================================================
           LOWER CONTENT

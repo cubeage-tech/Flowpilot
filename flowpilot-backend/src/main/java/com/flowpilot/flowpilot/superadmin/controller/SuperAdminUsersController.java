@@ -22,7 +22,6 @@ public class SuperAdminUsersController {
 
     // =========================================================
     // GET ALL USERS
-    // GET /api/superadmin/users
     // =========================================================
 
     @GetMapping
@@ -36,14 +35,13 @@ public class SuperAdminUsersController {
 
 
     // =========================================================
-    // GET USER BY EMPLOYEE ID
-    // GET /api/superadmin/users/{employeeId}
+    // GET USER
     // =========================================================
 
     @GetMapping("/{employeeId}")
     public ResponseEntity<SuperAdminUserDto>
     getUserByEmployeeId(
-            @PathVariable String employeeId
+            @PathVariable Long employeeId
     ) {
 
         return ResponseEntity.ok(
@@ -56,7 +54,6 @@ public class SuperAdminUsersController {
 
     // =========================================================
     // CREATE USER
-    // POST /api/superadmin/users
     // =========================================================
 
     @PostMapping
@@ -65,24 +62,23 @@ public class SuperAdminUsersController {
             @RequestBody SuperAdminUserDto dto
     ) {
 
-        SuperAdminUserDto createdUser =
+        SuperAdminUserDto created =
                 usersService.createUser(dto);
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(createdUser);
+                .body(created);
     }
 
 
     // =========================================================
     // UPDATE USER
-    // PUT /api/superadmin/users/{employeeId}
     // =========================================================
 
     @PutMapping("/{employeeId}")
     public ResponseEntity<SuperAdminUserDto>
     updateUser(
-            @PathVariable String employeeId,
+            @PathVariable Long employeeId,
             @RequestBody SuperAdminUserDto dto
     ) {
 
@@ -97,13 +93,12 @@ public class SuperAdminUsersController {
 
     // =========================================================
     // ENABLE / DISABLE
-    // PATCH /api/superadmin/users/{employeeId}/status
     // =========================================================
 
     @PatchMapping("/{employeeId}/status")
     public ResponseEntity<SuperAdminUserDto>
     toggleStatus(
-            @PathVariable String employeeId
+            @PathVariable Long employeeId
     ) {
 
         return ResponseEntity.ok(
@@ -115,14 +110,13 @@ public class SuperAdminUsersController {
 
 
     // =========================================================
-    // DELETE USER
-    // DELETE /api/superadmin/users/{employeeId}
+    // DELETE
     // =========================================================
 
     @DeleteMapping("/{employeeId}")
     public ResponseEntity<Void>
     deleteUser(
-            @PathVariable String employeeId
+            @PathVariable Long employeeId
     ) {
 
         usersService.deleteUser(

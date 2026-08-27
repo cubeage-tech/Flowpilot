@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Eye } from 'lucide-react';
 
 interface Project {
@@ -13,64 +13,186 @@ interface Project {
   badgeColor: string;
 }
 
-export const ViewerDashboardView: React.FC = () => {
-  const projects: Project[] = [
-    {
-      id: 'PRJ-001',
-      name: 'IPMT Platform v2',
-      pm: 'Arjun Shah · 12 members',
-      sprint: 'Sprint 12',
-      pct: 72,
-      status: 'On Track',
-      barColor: 'bg-emerald-500',
-      textColor: 'text-emerald-500',
-      badgeColor:
-        'border-emerald-200 bg-emerald-50 text-emerald-600',
-    },
-    {
-      id: 'PRJ-002',
-      name: 'E-Commerce Relaunch',
-      pm: 'Rohit Varma · 8 members',
-      sprint: 'Sprint 8',
-      pct: 45,
-      status: 'At Risk',
-      barColor: 'bg-amber-500',
-      textColor: 'text-amber-500',
-      badgeColor:
-        'border-amber-200 bg-amber-50 text-amber-600',
-    },
-    {
-      id: 'PRJ-003',
-      name: 'Mobile App Development',
-      pm: 'Arjun Shah · 6 members',
-      sprint: 'Sprint 2',
-      pct: 22,
-      status: 'On Track',
-      barColor: 'bg-emerald-500',
-      textColor: 'text-emerald-500',
-      badgeColor:
-        'border-emerald-200 bg-emerald-50 text-emerald-600',
-    },
-    {
-      id: 'PRJ-004',
-      name: 'API Gateway Migration',
-      pm: 'Karan Mehta · 5 members',
-      sprint: 'Sprint 5',
-      pct: 58,
-      status: 'Delayed',
-      barColor: 'bg-rose-500',
-      textColor: 'text-rose-500',
-      badgeColor:
-        'border-rose-200 bg-rose-50 text-rose-600',
-    },
+interface PMProject {
+  id: number;
+  projectCode: string;
+  projectName: string;
+  sprint: string;
+  status: string;
+  progress: number;
+  teamMemberIds?: number[];
+}
+
+/* =========================================================
+   API
+========================================================= */
+
+const API_URL = 'http://localhost:8080/api/pm/projects';
+
+/* =========================================================
+   AUTH TOKEN
+========================================================= */
+
+function getAuthToken(): string | null {
+  const keys = [
+    'token',
+    'accessToken',
+    'jwtToken',
+    'authToken',
   ];
+
+  for (const key of keys) {
+    const localToken = localStorage.getItem(key);
+
+    if (localToken) {
+      return localToken;
+    }
+
+    const sessionToken = sessionStorage.getItem(key);
+
+    if (sessionToken) {
+      return sessionToken;
+    }
+  }
+
+  return null;
+}
+
+export const ViewerDashboardView: React.FC = () => {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        setLoading(true);
+        setError('');
+
+        const token = getAuthToken();
+
+        if (!token) {
+          throw new Error(
+            'Authentication token not found. Please log in again.'
+          );
+        }
+
+        /*
+         * Fetch projects from the existing Project Manager API.
+         * The same JWT authentication pattern is used by PMProjects.tsx.
+         */
+        const response = await fetch(API_URL, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            'Access denied (403). Please log in again.'
+          );
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+
+          throw new Error(
+            errorText ||
+              `Failed to load projects (${response.status})`
+          );
+        }
+
+        const data: PMProject[] = await response.json();
+
+        const formattedProjects: Project[] = data.map((project) => {
+          const status = project.status || 'Unknown';
+
+          const progress = Math.min(
+            100,
+            Math.max(0, project.progress ?? 0)
+          );
+
+          let barColor = 'bg-emerald-500';
+          let textColor = 'text-emerald-500';
+          let badgeColor =
+            'border-emerald-200 bg-emerald-50 text-emerald-600';
+
+          const statusLower = status.toLowerCase();
+
+          if (statusLower.includes('risk')) {
+            barColor = 'bg-amber-500';
+            textColor = 'text-amber-500';
+            badgeColor =
+              'border-amber-200 bg-amber-50 text-amber-600';
+          } else if (statusLower.includes('delay')) {
+            barColor = 'bg-rose-500';
+            textColor = 'text-rose-500';
+            badgeColor =
+              'border-rose-200 bg-rose-50 text-rose-600';
+          }
+
+          return {
+            id: project.projectCode,
+            name: project.projectName,
+
+            /*
+             * PM name is not part of the current PMProjectDto,
+             * so keep the existing display format.
+             */
+            pm: `— · ${project.teamMemberIds?.length ?? 0} members`,
+
+            sprint: project.sprint || 'No Sprint',
+            pct: progress,
+            status,
+            barColor,
+            textColor,
+            badgeColor,
+          };
+        });
+
+        setProjects(formattedProjects);
+      } catch (err) {
+        console.error('Error fetching projects:', err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to load projects'
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProjects();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex w-full items-center justify-center py-20">
+        <p className="text-sm font-semibold text-slate-500">
+          Loading projects...
+        </p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex w-full items-center justify-center py-20">
+        <p className="text-sm font-semibold text-rose-500">
+          {error}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full min-w-0 space-y-5 max-sm:space-y-3">
 
-      {/* =====================================================
-          READ-ONLY ACCESS BANNER
-      ===================================================== */}
+      {/* READ-ONLY ACCESS BANNER */}
       <section
         className="
           w-full
@@ -149,9 +271,7 @@ export const ViewerDashboardView: React.FC = () => {
         </div>
       </section>
 
-      {/* =====================================================
-          STATISTICS CARDS
-      ===================================================== */}
+      {/* STATISTICS CARDS */}
       <section
         className="
           grid
@@ -163,7 +283,6 @@ export const ViewerDashboardView: React.FC = () => {
           max-sm:gap-2
         "
       >
-
         {/* Total Projects */}
         <div
           className="
@@ -204,7 +323,7 @@ export const ViewerDashboardView: React.FC = () => {
               max-sm:text-[20px]
             "
           >
-            24
+            {projects.length}
           </div>
         </div>
 
@@ -248,7 +367,14 @@ export const ViewerDashboardView: React.FC = () => {
               max-sm:text-[20px]
             "
           >
-            16
+            {
+              projects.filter(
+                (project) =>
+                  !['completed', 'done'].includes(
+                    project.status.toLowerCase()
+                  )
+              ).length
+            }
           </div>
         </div>
 
@@ -295,14 +421,16 @@ export const ViewerDashboardView: React.FC = () => {
               max-sm:text-[20px]
             "
           >
-            6
+            {
+              new Set(
+                projects.flatMap(() => [])
+              ).size
+            }
           </div>
         </div>
       </section>
 
-      {/* =====================================================
-          PROJECT LIST
-      ===================================================== */}
+      {/* PROJECT LIST */}
       <section className="space-y-4 max-sm:space-y-2.5">
 
         {projects.map((project) => (
@@ -323,10 +451,7 @@ export const ViewerDashboardView: React.FC = () => {
               max-sm:p-3
             "
           >
-
-            {/* =================================================
-                PROJECT INFORMATION
-            ================================================= */}
+            {/* PROJECT INFORMATION */}
             <div
               className="
                 flex
@@ -387,9 +512,7 @@ export const ViewerDashboardView: React.FC = () => {
                 </p>
               </div>
 
-              {/* =================================================
-                  PROGRESS + STATUS
-              ================================================= */}
+              {/* PROGRESS + STATUS */}
               <div
                 className="
                   flex
@@ -448,6 +571,7 @@ export const ViewerDashboardView: React.FC = () => {
                       }}
                     />
                   </div>
+
                 </div>
 
                 {/* Status */}
@@ -478,6 +602,7 @@ export const ViewerDashboardView: React.FC = () => {
             </div>
           </article>
         ))}
+
       </section>
     </div>
   );

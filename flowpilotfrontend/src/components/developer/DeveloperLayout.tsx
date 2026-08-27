@@ -6,7 +6,7 @@ import { DeveloperTasks } from './DeveloperTasks';
 import { DeveloperSprintBoard } from './DeveloperSprintBoard';
 import { DeveloperTimeLog } from './DeveloperTimeLog';
 import { DeveloperMentions } from './DeveloperMentions';
-
+                                                                                                          
 const roleConfig = {
   label: 'SENIOR FRONTEND DEVELOPER',
   color: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400',
@@ -15,7 +15,7 @@ const roleConfig = {
   avatar: 'SR',
   avatarBg: 'bg-teal-500',
 };
-
+                                                                                        
 const navItems = [
   { name: 'My Dashboard', icon: <LayoutGrid size={18} /> },
   { name: 'My Tasks', icon: <CheckSquare size={18} /> },
@@ -23,7 +23,7 @@ const navItems = [
   { name: 'Time Log', icon: <Clock size={18} /> },
   { name: 'Mentions', icon: <Bell size={18} /> },
 ];
-
+                          
 const pageTitles: Record<string, string> = {
   'My Dashboard': 'My Dashboard',
   'My Tasks': 'My Tasks',
@@ -32,23 +32,23 @@ const pageTitles: Record<string, string> = {
   'Mentions': 'Mentions',
 };
 
-interface Props {
-  onLogout?: () => void;
-}
-
 const notifications = [
-  { id: 1, title: 'My task T-040 updated', message: 'Design system component library — 3/7 done.', time: '10 min ago', unread: true, color: 'bg-teal-500' },
-  { id: 2, title: 'Mentioned by Aryan', message: '@sneha Button + Input needed before Aug 8 demo.', time: '2 hours ago', unread: true, color: 'bg-cyan-400' },
-  { id: 3, title: 'PR review requested', message: 'Mihir requested review on T-041 PR.', time: '3 hours ago', unread: false, color: 'bg-slate-300' },
-  { id: 4, title: 'Sprint 12 standup', message: 'Daily standup in 15 mins.', time: '4 hours ago', unread: true, color: 'bg-orange-400' },
+  { id: 1, title: 'PR approved', message: 'Your latest PR has been approved by the reviewer.', time: '5 min ago', unread: true, color: 'bg-cyan-500' },
+  { id: 2, title: 'Sprint review', message: 'Sprint review meeting starts in 30 minutes.', time: '1 hour ago', unread: true, color: 'bg-emerald-500' },
+  { id: 3, title: 'Build passed', message: 'Production build completed successfully.', time: '3 hours ago', unread: false, color: 'bg-slate-300' },
+  { id: 4, title: 'Mention received', message: 'A teammate mentioned you in a comment thread.', time: 'Today', unread: true, color: 'bg-violet-500' },
 ];
 
 const profileConfig = {
   name: 'Sneha Rao',
-  email: 's.rao@ipmt.com',
+  email: 'sneha.rao@flowpilot.com',
   roleLabel: 'Senior Frontend Developer',
-  roleBadgeColor: 'bg-teal-100 text-teal-600',
+  roleBadgeColor: 'bg-cyan-100 text-cyan-600',
 };
+
+interface Props {
+  onLogout?: () => void;
+}
 
 export const DeveloperLayout: React.FC<Props> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('My Dashboard');
@@ -72,5 +72,5 @@ export const DeveloperLayout: React.FC<Props> = ({ onLogout }) => {
     </DashboardLayout>
   );
 };
-
+                               
 export default DeveloperLayout;

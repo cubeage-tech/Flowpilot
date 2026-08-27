@@ -114,13 +114,13 @@ const DeveloperTasks: React.FC = () => {
                     task.priority === "High" ? "bg-red-50 text-red-500" : "bg-orange-50 text-orange-500"
                   }`}>{task.priority}</span>
                 </div>
-                <h3 className="text-[14px] sm:text-[16px] font-semibold text-gray-900">{task.title}</h3>
+                <h3 className="text-[14px] sm:text-[16px] font-bold text-gray-900">{task.title}</h3>
                 <p className="mt-1 text-xs sm:text-sm text-gray-400">{task.details}</p>
               </div>
 
               {/* Right Content */}
               <div className="flex shrink-0 flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-5">
-                <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                <span className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
                   task.status === "In Progress"
                     ? "border border-orange-100 bg-orange-50 text-orange-500"
                     : task.status === "Done"

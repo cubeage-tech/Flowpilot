@@ -16,7 +16,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneral(Exception ex) {
+        ex.printStackTrace();
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ApiResponse<>(false, "Something went wrong", null));
+                .body(new ApiResponse<>(false, ex.getMessage() != null ? ex.getMessage() : "Something went wrong", null));
     }
 }

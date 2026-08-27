@@ -44,7 +44,7 @@ export const SecuritySection: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           
           {/* Left Column: Heading & 6 Feature Cards */}
-          <div>
+          <div className="relative z-10">
             <span className="inline-block text-xs font-extrabold tracking-widest text-emerald-400 uppercase mb-3">
               ENTERPRISE SECURITY
             </span>
@@ -71,7 +71,7 @@ export const SecuritySection: React.FC = () => {
           </div>
 
           {/* Right Column: Visual Lock Graphic matching Figma Screenshot 5 */}
-          <div className="flex items-center justify-center relative min-h-[380px]">
+          <div className="absolute inset-0 z-0 flex items-center justify-center opacity-60 blur-[1px] pointer-events-none lg:relative lg:inset-auto lg:min-h-[380px] lg:opacity-100 lg:blur-0">
             {/* Concentric Radar Rings */}
             <div className="absolute w-[360px] h-[360px] rounded-full border border-slate-800/60 animate-ping opacity-20"></div>
             <div className="absolute w-[300px] h-[300px] rounded-full border border-slate-800"></div>

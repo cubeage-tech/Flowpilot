@@ -4,7 +4,7 @@ import { DashboardLayout } from '../common/DashboardLayout';
 import { AdminDashboardView } from './AdminDashboardView';
 import { AdminUsers } from './AdminUsers';
 import { AdminDepartments } from './AdminDepartments';
-import { AdminProjects } from './AdminProjects';
+import  AdminProjects  from './AdminProjects';
 import { AdminReports } from './AdminReports';
 import { AdminNotifications } from './AdminNotifications';
 import { AdminSettings } from './AdminSettings';

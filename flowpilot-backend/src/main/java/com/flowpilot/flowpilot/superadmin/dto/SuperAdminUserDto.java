@@ -13,7 +13,7 @@ import lombok.Setter;
 @AllArgsConstructor
 public class SuperAdminUserDto {
 
-    private String employeeId;
+    private Long employeeId;
 
     private String name;
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Settings,
   ShieldCheck,
@@ -10,33 +10,300 @@ import {
   Check,
 } from 'lucide-react';
 
+const SETTINGS_STORAGE_KEY = 'flowpilot_superadmin_settings';
+
+interface SavedSettings {
+  maintenanceMode: boolean;
+  emailNotifications: boolean;
+  securityAlerts: boolean;
+  twoFactorAuth: boolean;
+  automaticSessionTimeout: boolean;
+  sessionTimeout: string;
+  maxLoginAttempts: string;
+}
+
+const DEFAULT_SETTINGS: SavedSettings = {
+  maintenanceMode: false,
+  emailNotifications: true,
+  securityAlerts: true,
+  twoFactorAuth: true,
+  automaticSessionTimeout: true,
+  sessionTimeout: '30',
+  maxLoginAttempts: '5',
+};
+
 const SuperAdminSettings: React.FC = () => {
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [securityAlerts, setSecurityAlerts] = useState(true);
-  const [twoFactorAuth, setTwoFactorAuth] = useState(true);
-  const [sessionTimeout, setSessionTimeout] = useState(true);
+  const [maintenanceMode, setMaintenanceMode] = useState(
+    DEFAULT_SETTINGS.maintenanceMode
+  );
+
+  const [emailNotifications, setEmailNotifications] = useState(
+    DEFAULT_SETTINGS.emailNotifications
+  );
+
+  const [securityAlerts, setSecurityAlerts] = useState(
+    DEFAULT_SETTINGS.securityAlerts
+  );
+
+  const [twoFactorAuth, setTwoFactorAuth] = useState(
+    DEFAULT_SETTINGS.twoFactorAuth
+  );
+
+  const [automaticSessionTimeout, setAutomaticSessionTimeout] =
+    useState(DEFAULT_SETTINGS.automaticSessionTimeout);
+
+  const [sessionTimeout, setSessionTimeout] = useState(
+    DEFAULT_SETTINGS.sessionTimeout
+  );
+
+  // FIX: Maximum Login Attempts now has state
+  const [maxLoginAttempts, setMaxLoginAttempts] = useState(
+    DEFAULT_SETTINGS.maxLoginAttempts
+  );
+
   const [saved, setSaved] = useState(false);
 
-  const handleSave = () => {
-    setSaved(true);
+  // ============================================================
+  // LOAD SAVED SETTINGS
+  // ============================================================
 
-    setTimeout(() => {
-      setSaved(false);
-    }, 2500);
+  useEffect(() => {
+    try {
+      const storedSettings = localStorage.getItem(
+        SETTINGS_STORAGE_KEY
+      );
+
+      if (!storedSettings) {
+        return;
+      }
+
+      const parsedSettings: Partial<SavedSettings> =
+        JSON.parse(storedSettings);
+
+      setMaintenanceMode(
+        parsedSettings.maintenanceMode ??
+          DEFAULT_SETTINGS.maintenanceMode
+      );
+
+      setEmailNotifications(
+        parsedSettings.emailNotifications ??
+          DEFAULT_SETTINGS.emailNotifications
+      );
+
+      setSecurityAlerts(
+        parsedSettings.securityAlerts ??
+          DEFAULT_SETTINGS.securityAlerts
+      );
+
+      setTwoFactorAuth(
+        parsedSettings.twoFactorAuth ??
+          DEFAULT_SETTINGS.twoFactorAuth
+      );
+
+      setAutomaticSessionTimeout(
+        parsedSettings.automaticSessionTimeout ??
+          DEFAULT_SETTINGS.automaticSessionTimeout
+      );
+
+      setSessionTimeout(
+        parsedSettings.sessionTimeout ??
+          DEFAULT_SETTINGS.sessionTimeout
+      );
+
+      setMaxLoginAttempts(
+        parsedSettings.maxLoginAttempts ??
+          DEFAULT_SETTINGS.maxLoginAttempts
+      );
+    } catch (error) {
+      console.error(
+        'Failed to load Super Admin settings:',
+        error
+      );
+    }
+  }, []);
+
+  // ============================================================
+  // CREATE SETTINGS OBJECT
+  // ============================================================
+
+  const getCurrentSettings = (): SavedSettings => {
+    return {
+      maintenanceMode,
+      emailNotifications,
+      securityAlerts,
+      twoFactorAuth,
+      automaticSessionTimeout,
+      sessionTimeout,
+      maxLoginAttempts,
+    };
   };
 
+  // ============================================================
+  // SAVE SETTINGS
+  // ============================================================
+
+  const saveSettings = (settings: SavedSettings) => {
+    try {
+      localStorage.setItem(
+        SETTINGS_STORAGE_KEY,
+        JSON.stringify(settings)
+      );
+
+      // Notify other components immediately
+      window.dispatchEvent(
+        new CustomEvent('superadmin-settings-updated', {
+          detail: settings,
+        })
+      );
+
+      return true;
+    } catch (error) {
+      console.error(
+        'Failed to save Super Admin settings:',
+        error
+      );
+
+      return false;
+    }
+  };
+
+  // ============================================================
+  // SAVE BUTTON
+  // ============================================================
+
+  const handleSave = () => {
+    const settingsToSave = getCurrentSettings();
+
+    const success = saveSettings(settingsToSave);
+
+    if (success) {
+      setSaved(true);
+
+      setTimeout(() => {
+        setSaved(false);
+      }, 2500);
+    }
+  };
+
+  // ============================================================
+  // RESET SETTINGS
+  // ============================================================
+
   const handleReset = () => {
-    setMaintenanceMode(false);
-    setEmailNotifications(true);
-    setSecurityAlerts(true);
-    setTwoFactorAuth(true);
-    setSessionTimeout(true);
+    setMaintenanceMode(
+      DEFAULT_SETTINGS.maintenanceMode
+    );
+
+    setEmailNotifications(
+      DEFAULT_SETTINGS.emailNotifications
+    );
+
+    setSecurityAlerts(
+      DEFAULT_SETTINGS.securityAlerts
+    );
+
+    setTwoFactorAuth(
+      DEFAULT_SETTINGS.twoFactorAuth
+    );
+
+    setAutomaticSessionTimeout(
+      DEFAULT_SETTINGS.automaticSessionTimeout
+    );
+
+    setSessionTimeout(
+      DEFAULT_SETTINGS.sessionTimeout
+    );
+
+    setMaxLoginAttempts(
+      DEFAULT_SETTINGS.maxLoginAttempts
+    );
+
     setSaved(false);
+
+    localStorage.removeItem(SETTINGS_STORAGE_KEY);
+
+    window.dispatchEvent(
+      new CustomEvent('superadmin-settings-updated', {
+        detail: DEFAULT_SETTINGS,
+      })
+    );
+  };
+
+  // ============================================================
+  // SESSION TIMEOUT CHANGE
+  // ============================================================
+
+  const handleSessionTimeoutChange = (
+    value: string
+  ) => {
+    setSessionTimeout(value);
+    setSaved(false);
+
+    /*
+     * Save immediately.
+     *
+     * This means:
+     * 30 -> 15
+     *
+     * Even if the page is refreshed immediately,
+     * it will remain 15.
+     */
+    const updatedSettings: SavedSettings = {
+      ...getCurrentSettings(),
+      sessionTimeout: value,
+    };
+
+    saveSettings(updatedSettings);
+  };
+
+  // ============================================================
+  // MAXIMUM LOGIN ATTEMPTS CHANGE
+  // ============================================================
+
+  const handleMaxLoginAttemptsChange = (
+    value: string
+  ) => {
+    setMaxLoginAttempts(value);
+    setSaved(false);
+
+    /*
+     * Save immediately.
+     *
+     * This means:
+     * 5 -> 3
+     *
+     * The value will remain 3 after refresh.
+     */
+    const updatedSettings: SavedSettings = {
+      ...getCurrentSettings(),
+      maxLoginAttempts: value,
+    };
+
+    saveSettings(updatedSettings);
+  };
+
+  // ============================================================
+  // AUTOMATIC SESSION TIMEOUT TOGGLE
+  // ============================================================
+
+  const handleAutomaticSessionTimeoutChange = () => {
+    const newValue = !automaticSessionTimeout;
+
+    setAutomaticSessionTimeout(newValue);
+    setSaved(false);
+
+    const updatedSettings: SavedSettings = {
+      ...getCurrentSettings(),
+      automaticSessionTimeout: newValue,
+    };
+
+    saveSettings(updatedSettings);
   };
 
   return (
     <div className="w-full min-w-0 space-y-6">
+
+      {/* HEADER */}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
@@ -64,11 +331,18 @@ const SuperAdminSettings: React.FC = () => {
             onClick={handleSave}
             className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 text-sm font-bold text-white transition hover:bg-slate-800 sm:flex-none"
           >
-            {saved ? <Check size={15} /> : <Save size={15} />}
+            {saved ? (
+              <Check size={15} />
+            ) : (
+              <Save size={15} />
+            )}
+
             {saved ? 'Saved' : 'Save Changes'}
           </button>
         </div>
       </div>
+
+      {/* SYSTEM STATUS */}
 
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:p-5">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-500">
@@ -96,6 +370,8 @@ const SuperAdminSettings: React.FC = () => {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
 
+        {/* GENERAL SETTINGS */}
+
         <SettingsCard
           icon={<Settings size={19} />}
           iconClass="bg-blue-50 text-blue-500"
@@ -106,7 +382,16 @@ const SuperAdminSettings: React.FC = () => {
             title="Maintenance Mode"
             description="Temporarily restrict access while maintenance is performed"
             enabled={maintenanceMode}
-            onChange={() => setMaintenanceMode(!maintenanceMode)}
+            onChange={() => {
+              const newValue = !maintenanceMode;
+
+              setMaintenanceMode(newValue);
+
+              saveSettings({
+                ...getCurrentSettings(),
+                maintenanceMode: newValue,
+              });
+            }}
           />
 
           <Divider />
@@ -128,6 +413,8 @@ const SuperAdminSettings: React.FC = () => {
           </SettingField>
         </SettingsCard>
 
+        {/* SECURITY */}
+
         <SettingsCard
           icon={<LockKeyhole size={19} />}
           iconClass="bg-rose-50 text-rose-500"
@@ -138,7 +425,16 @@ const SuperAdminSettings: React.FC = () => {
             title="Two-Factor Authentication"
             description="Require users to verify their identity using a second factor"
             enabled={twoFactorAuth}
-            onChange={() => setTwoFactorAuth(!twoFactorAuth)}
+            onChange={() => {
+              const newValue = !twoFactorAuth;
+
+              setTwoFactorAuth(newValue);
+
+              saveSettings({
+                ...getCurrentSettings(),
+                twoFactorAuth: newValue,
+              });
+            }}
           />
 
           <Divider />
@@ -147,7 +443,16 @@ const SuperAdminSettings: React.FC = () => {
             title="Security Alerts"
             description="Notify administrators about suspicious account activity"
             enabled={securityAlerts}
-            onChange={() => setSecurityAlerts(!securityAlerts)}
+            onChange={() => {
+              const newValue = !securityAlerts;
+
+              setSecurityAlerts(newValue);
+
+              saveSettings({
+                ...getCurrentSettings(),
+                securityAlerts: newValue,
+              });
+            }}
           />
 
           <Divider />
@@ -165,6 +470,8 @@ const SuperAdminSettings: React.FC = () => {
           </SettingField>
         </SettingsCard>
 
+        {/* NOTIFICATIONS */}
+
         <SettingsCard
           icon={<Bell size={19} />}
           iconClass="bg-amber-50 text-amber-500"
@@ -175,7 +482,16 @@ const SuperAdminSettings: React.FC = () => {
             title="Email Notifications"
             description="Send important system updates through email"
             enabled={emailNotifications}
-            onChange={() => setEmailNotifications(!emailNotifications)}
+            onChange={() => {
+              const newValue = !emailNotifications;
+
+              setEmailNotifications(newValue);
+
+              saveSettings({
+                ...getCurrentSettings(),
+                emailNotifications: newValue,
+              });
+            }}
           />
 
           <Divider />
@@ -184,7 +500,16 @@ const SuperAdminSettings: React.FC = () => {
             title="Security Alerts"
             description="Receive alerts when important security events occur"
             enabled={securityAlerts}
-            onChange={() => setSecurityAlerts(!securityAlerts)}
+            onChange={() => {
+              const newValue = !securityAlerts;
+
+              setSecurityAlerts(newValue);
+
+              saveSettings({
+                ...getCurrentSettings(),
+                securityAlerts: newValue,
+              });
+            }}
           />
 
           <Divider />
@@ -198,6 +523,8 @@ const SuperAdminSettings: React.FC = () => {
           </SettingField>
         </SettingsCard>
 
+        {/* SESSION MANAGEMENT */}
+
         <SettingsCard
           icon={<Clock3 size={19} />}
           iconClass="bg-violet-50 text-violet-500"
@@ -206,16 +533,23 @@ const SuperAdminSettings: React.FC = () => {
         >
           <SettingRow
             title="Automatic Session Timeout"
-            description="Automatically sign out inactive users"
-            enabled={sessionTimeout}
-            onChange={() => setSessionTimeout(!sessionTimeout)}
+            description="Automatically sign out users after the configured time"
+            enabled={automaticSessionTimeout}
+            onChange={
+              handleAutomaticSessionTimeoutChange
+            }
           />
 
           <Divider />
 
           <SettingField label="Session Timeout">
             <select
-              defaultValue="30"
+              value={sessionTimeout}
+              onChange={(e) =>
+                handleSessionTimeoutChange(
+                  e.target.value
+                )
+              }
               className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50/40 px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
             >
               <option value="15">15 minutes</option>
@@ -229,7 +563,12 @@ const SuperAdminSettings: React.FC = () => {
 
           <SettingField label="Maximum Login Attempts">
             <select
-              defaultValue="5"
+              value={maxLoginAttempts}
+              onChange={(e) =>
+                handleMaxLoginAttemptsChange(
+                  e.target.value
+                )
+              }
               className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50/40 px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white"
             >
               <option value="3">3 attempts</option>
@@ -239,6 +578,8 @@ const SuperAdminSettings: React.FC = () => {
           </SettingField>
         </SettingsCard>
       </div>
+
+      {/* FOOTER */}
 
       <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
         <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-slate-500 shadow-sm">
@@ -259,6 +600,10 @@ const SuperAdminSettings: React.FC = () => {
     </div>
   );
 };
+
+/* ============================================================
+   REUSABLE COMPONENTS
+============================================================ */
 
 const Divider = () => (
   <div className="border-t border-slate-100" />

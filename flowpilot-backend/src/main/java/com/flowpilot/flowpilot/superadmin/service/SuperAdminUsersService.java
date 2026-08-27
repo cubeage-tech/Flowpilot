@@ -1,5 +1,7 @@
 package com.flowpilot.flowpilot.superadmin.service;
 
+import com.flowpilot.flowpilot.common.model.User;
+import com.flowpilot.flowpilot.common.repository.UserRepository;
 import com.flowpilot.flowpilot.superadmin.dto.SuperAdminUserDto;
 import com.flowpilot.flowpilot.superadmin.model.SuperAdminUser;
 import com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository;
@@ -8,22 +10,57 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class SuperAdminUsersService {
 
     private final SuperAdminUserRepository userRepository;
 
+    /*
+     * Repository for the common "users" table.
+     * This table is used by the normal login system.
+     */
+    private final UserRepository commonUserRepository;
+
+    /*
+     * Used to encode passwords before storing them.
+     */
     private final PasswordEncoder passwordEncoder;
+
+    /*
+     * Used to send the newly created user's credentials
+     * to the email entered in the Add User form.
+     */
+    private final EmailService emailService;
+
+
+    // =========================================================
+    // VALIDATION PATTERNS
+    // =========================================================
+
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile(
+                    "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"
+            );
+
+    private static final Pattern PASSWORD_PATTERN =
+            Pattern.compile(
+                    "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z\\d]).{8,}$"
+            );
 
 
     // =========================================================
     // GET ALL USERS
     // =========================================================
 
+    @Transactional(readOnly = true)
     public List<SuperAdminUserDto> getAllUsers() {
 
         return userRepository.findAll()
@@ -34,18 +71,129 @@ public class SuperAdminUsersService {
 
 
     // =========================================================
+    // SEARCH USERS
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public List<SuperAdminUserDto> searchUsers(
+            String keyword
+    ) {
+
+        if (keyword == null ||
+                keyword.isBlank()) {
+
+            return getAllUsers();
+        }
+
+        String searchTerm =
+                keyword.trim().toLowerCase();
+
+        return userRepository.findAll()
+                .stream()
+                .filter(user ->
+                        matchesSearch(
+                                user,
+                                searchTerm
+                        )
+                )
+                .map(this::convertToDto)
+                .toList();
+    }
+
+
+    // =========================================================
+    // SEARCH MATCHING LOGIC
+    // =========================================================
+
+    private boolean matchesSearch(
+            SuperAdminUser user,
+            String searchTerm
+    ) {
+
+        String employeeId =
+                user.getEmployeeId() != null
+                        ? String.valueOf(
+                                user.getEmployeeId()
+                        )
+                        : "";
+
+        String name =
+                user.getName() != null
+                        ? user.getName()
+                        : "";
+
+        String email =
+                user.getEmail() != null
+                        ? user.getEmail()
+                        : "";
+
+        String role =
+                user.getRole() != null
+                        ? user.getRole()
+                        : "";
+
+        String department =
+                user.getDepartment() != null
+                        ? user.getDepartment()
+                        : "";
+
+        String designation =
+                user.getDesignation() != null
+                        ? user.getDesignation()
+                        : "";
+
+        return employeeId
+                    .toLowerCase()
+                    .contains(searchTerm)
+
+                || ("EMP-" + employeeId)
+                    .toLowerCase()
+                    .contains(searchTerm)
+
+                || name
+                    .toLowerCase()
+                    .contains(searchTerm)
+
+                || email
+                    .toLowerCase()
+                    .contains(searchTerm)
+
+                || role
+                    .toLowerCase()
+                    .contains(searchTerm)
+
+                || department
+                    .toLowerCase()
+                    .contains(searchTerm)
+
+                || designation
+                    .toLowerCase()
+                    .contains(searchTerm);
+    }
+
+
+    // =========================================================
     // GET USER BY EMPLOYEE ID
     // =========================================================
 
+    @Transactional(readOnly = true)
     public SuperAdminUserDto getUserByEmployeeId(
-            String employeeId
+            Long employeeId
     ) {
+
+        if (employeeId == null) {
+
+            throw new IllegalArgumentException(
+                    "Employee ID is required."
+            );
+        }
 
         SuperAdminUser user =
                 userRepository.findById(employeeId)
                         .orElseThrow(() ->
                                 new RuntimeException(
-                                        "User not found"
+                                        "User not found with employee ID: "
+                                                + employeeId
                                 )
                         );
 
@@ -61,74 +209,176 @@ public class SuperAdminUsersService {
             SuperAdminUserDto dto
     ) {
 
-        validateRequiredFields(dto);
+        if (dto == null) {
 
-        String employeeId =
-                dto.getEmployeeId().trim();
+            throw new IllegalArgumentException(
+                    "User data cannot be null."
+            );
+        }
+
+
+        // -----------------------------------------------------
+        // NAME
+        // -----------------------------------------------------
+
+        if (dto.getName() == null ||
+                dto.getName().isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "Name is required."
+            );
+        }
+
+        String name =
+                dto.getName().trim();
+
+
+        // -----------------------------------------------------
+        // EMAIL
+        // -----------------------------------------------------
+
+        if (dto.getEmail() == null ||
+                dto.getEmail().isBlank()) {
+
+            throw new IllegalArgumentException(
+                    "Email address is required."
+            );
+        }
 
         String email =
                 dto.getEmail().trim();
 
 
-        if (userRepository.existsById(employeeId)) {
+        if (!isValidEmail(email)) {
 
-            throw new RuntimeException(
-                    "Employee ID already exists"
+            throw new IllegalArgumentException(
+                    "Please enter a valid email address."
             );
         }
 
+
+        // -----------------------------------------------------
+        // CHECK EMAIL IN SUPERADMIN USERS
+        // -----------------------------------------------------
 
         if (userRepository.existsByEmail(email)) {
 
-            throw new RuntimeException(
-                    "Email already exists"
+            throw new IllegalArgumentException(
+                    "A user with this email already exists."
             );
         }
 
+
+        // -----------------------------------------------------
+        // CHECK EMAIL IN COMMON USERS
+        // -----------------------------------------------------
+
+        if (commonUserRepository.existsByEmail(email)) {
+
+            throw new IllegalArgumentException(
+                    "A login account with this email already exists."
+            );
+        }
+
+
+        // -----------------------------------------------------
+        // PASSWORD
+        // -----------------------------------------------------
 
         if (dto.getPassword() == null ||
                 dto.getPassword().isBlank()) {
 
-            throw new RuntimeException(
-                    "Password is required"
+            throw new IllegalArgumentException(
+                    "Password is required."
             );
         }
 
+        /*
+         * Keep the original password only in memory.
+         *
+         * It will NOT be stored in either database table.
+         * It is required only for sending the welcome email.
+         */
+        String rawPassword =
+                dto.getPassword();
 
-        validatePassword(dto.getPassword());
+        validatePassword(
+                rawPassword
+        );
 
 
-        SuperAdminUser user =
+        // -----------------------------------------------------
+        // ENCODE PASSWORD
+        // -----------------------------------------------------
+
+        String encodedPassword =
+                passwordEncoder.encode(
+                        rawPassword
+                );
+
+
+        // -----------------------------------------------------
+        // OPTIONAL VALUES
+        // -----------------------------------------------------
+
+        String role =
+                cleanValue(
+                        dto.getRole()
+                );
+
+        String department =
+                cleanValue(
+                        dto.getDepartment()
+                );
+
+        String designation =
+                cleanValue(
+                        dto.getDesignation()
+                );
+
+
+        // -----------------------------------------------------
+        // STATUS
+        // -----------------------------------------------------
+
+        String status =
+                getInitialStatus(
+                        dto.getStatus()
+                );
+
+
+        // =====================================================
+        // 1. SAVE SUPERADMIN USER
+        // =====================================================
+
+        SuperAdminUser superAdminUser =
                 SuperAdminUser.builder()
 
-                        .employeeId(employeeId)
-
-                        .name(
-                                dto.getName().trim()
-                        )
+                        .name(name)
 
                         .email(email)
 
-                        .role(
-                                dto.getRole().trim()
-                        )
-
-                        .department(
-                                dto.getDepartment().trim()
-                        )
-
-                        .designation(
-                                dto.getDesignation().trim()
-                        )
-
+                        /*
+                         * Only encoded password is stored.
+                         */
                         .password(
-                                passwordEncoder.encode(
-                                        dto.getPassword()
-                                )
+                                encodedPassword
                         )
 
-                        .status(
-                                SuperAdminUser.UserStatus.ACTIVE
+                        .role(role)
+
+                        .department(department)
+
+                        .designation(designation)
+
+                        .status(status)
+
+                        .active(
+                                status.equals("ACTIVE")
+                        )
+
+                        .createdAt(
+                                LocalDateTime.now()
                         )
 
                         .lastLogin(null)
@@ -136,11 +386,78 @@ public class SuperAdminUsersService {
                         .build();
 
 
-        SuperAdminUser savedUser =
-                userRepository.save(user);
+        SuperAdminUser savedSuperAdminUser =
+                userRepository.save(
+                        superAdminUser
+                );
 
 
-        return convertToDto(savedUser);
+        // =====================================================
+        // 2. SAVE LOGIN USER
+        // =====================================================
+
+        User loginUser =
+                new User();
+
+
+        loginUser.setName(name);
+
+        loginUser.setEmail(email);
+
+        /*
+         * IMPORTANT:
+         *
+         * Use the same encoded password.
+         * Do NOT encode encodedPassword again.
+         */
+        loginUser.setPassword(
+                encodedPassword
+        );
+
+        loginUser.setRole(role);
+
+
+        /*
+         * This creates the record in the "users" table.
+         */
+        commonUserRepository.save(
+                loginUser
+        );
+
+
+        // =====================================================
+        // 3. SEND WELCOME EMAIL
+        // =====================================================
+
+        /*
+         * Send the original password to the email address
+         * entered in the Add User form.
+         *
+         * rawPassword is never stored in the database.
+         */
+        emailService.sendWelcomeEmail(
+
+                email,
+
+                name,
+
+                rawPassword,
+
+                role,
+
+                department,
+
+                designation
+        );
+
+
+        // =====================================================
+        // RETURN CREATED USER
+        // =====================================================
+
+        return convertToDto(
+                savedSuperAdminUser
+        );
     }
 
 
@@ -149,67 +466,144 @@ public class SuperAdminUsersService {
     // =========================================================
 
     public SuperAdminUserDto updateUser(
-            String employeeId,
+            Long employeeId,
             SuperAdminUserDto dto
     ) {
+
+        if (employeeId == null) {
+
+            throw new IllegalArgumentException(
+                    "Employee ID is required."
+            );
+        }
+
+
+        if (dto == null) {
+
+            throw new IllegalArgumentException(
+                    "User data cannot be null."
+            );
+        }
+
 
         SuperAdminUser user =
                 userRepository.findById(employeeId)
                         .orElseThrow(() ->
                                 new RuntimeException(
-                                        "User not found"
+                                        "User not found with employee ID: "
+                                                + employeeId
                                 )
                         );
 
 
-        validateUpdateFields(dto);
+        // -----------------------------------------------------
+        // NAME
+        // -----------------------------------------------------
+
+        if (dto.getName() != null &&
+                !dto.getName().isBlank()) {
+
+            user.setName(
+                    dto.getName().trim()
+            );
+        }
 
 
-        String email =
-                dto.getEmail().trim();
+        // -----------------------------------------------------
+        // EMAIL
+        // -----------------------------------------------------
+
+        if (dto.getEmail() != null &&
+                !dto.getEmail().isBlank()) {
+
+            String newEmail =
+                    dto.getEmail().trim();
 
 
-        userRepository.findByEmail(email)
-                .ifPresent(existing -> {
+            if (!isValidEmail(newEmail)) {
 
-                    if (!existing.getEmployeeId()
-                            .equals(employeeId)) {
-
-                        throw new RuntimeException(
-                                "Email already exists"
-                        );
-                    }
-                });
+                throw new IllegalArgumentException(
+                        "Please enter a valid email address."
+                );
+            }
 
 
-        /*
-         * Employee ID is the primary key.
-         *
-         * It must not be changed.
-         */
+            if (!newEmail.equalsIgnoreCase(
+                    user.getEmail()
+            )) {
 
-        user.setName(
-                dto.getName().trim()
-        );
+                userRepository
+                        .findByEmail(newEmail)
+                        .ifPresent(existing -> {
 
-        user.setEmail(email);
+                            if (!existing
+                                    .getEmployeeId()
+                                    .equals(employeeId)) {
 
-        user.setRole(
-                dto.getRole().trim()
-        );
-
-        user.setDepartment(
-                dto.getDepartment().trim()
-        );
-
-        user.setDesignation(
-                dto.getDesignation().trim()
-        );
+                                throw new IllegalArgumentException(
+                                        "A user with this email already exists."
+                                );
+                            }
+                        });
 
 
-        /*
-         * Password is optional during editing.
-         */
+                commonUserRepository
+                        .findByEmail(newEmail)
+                        .ifPresent(existing -> {
+
+                            throw new IllegalArgumentException(
+                                    "A login account with this email already exists."
+                            );
+                        });
+
+
+                user.setEmail(newEmail);
+            }
+        }
+
+
+        // -----------------------------------------------------
+        // ROLE
+        // -----------------------------------------------------
+
+        if (dto.getRole() != null &&
+                !dto.getRole().isBlank()) {
+
+            user.setRole(
+                    dto.getRole().trim()
+            );
+        }
+
+
+        // -----------------------------------------------------
+        // DEPARTMENT
+        // -----------------------------------------------------
+
+        if (dto.getDepartment() != null &&
+                !dto.getDepartment().isBlank()) {
+
+            user.setDepartment(
+                    dto.getDepartment().trim()
+            );
+        }
+
+
+        // -----------------------------------------------------
+        // DESIGNATION
+        // -----------------------------------------------------
+
+        if (dto.getDesignation() != null &&
+                !dto.getDesignation().isBlank()) {
+
+            user.setDesignation(
+                    dto.getDesignation().trim()
+            );
+        }
+
+
+        // -----------------------------------------------------
+        // PASSWORD
+        // -----------------------------------------------------
 
         if (dto.getPassword() != null &&
                 !dto.getPassword().isBlank()) {
@@ -218,19 +612,103 @@ public class SuperAdminUsersService {
                     dto.getPassword()
             );
 
-            user.setPassword(
+
+            String encodedPassword =
                     passwordEncoder.encode(
                             dto.getPassword()
+                    );
+
+
+            user.setPassword(
+                    encodedPassword
+            );
+
+
+            /*
+             * Keep login password synchronized.
+             */
+            commonUserRepository
+                    .findByEmail(
+                            user.getEmail()
                     )
+                    .ifPresent(loginUser -> {
+
+                        loginUser.setPassword(
+                                encodedPassword
+                        );
+
+                        commonUserRepository.save(
+                                loginUser
+                        );
+                    });
+        }
+
+
+        // -----------------------------------------------------
+        // STATUS
+        // -----------------------------------------------------
+
+        if (dto.getStatus() != null &&
+                !dto.getStatus().isBlank()) {
+
+            String status =
+                    dto.getStatus()
+                            .trim()
+                            .toUpperCase();
+
+
+            if (!status.equals("ACTIVE") &&
+                    !status.equals("INACTIVE")) {
+
+                throw new IllegalArgumentException(
+                        "Status must be ACTIVE or INACTIVE."
+                );
+            }
+
+
+            user.setStatus(status);
+
+            user.setActive(
+                    status.equals("ACTIVE")
             );
         }
 
 
-        SuperAdminUser updatedUser =
+        // -----------------------------------------------------
+        // SAVE SUPERADMIN USER
+        // -----------------------------------------------------
+
+        SuperAdminUser updated =
                 userRepository.save(user);
 
 
-        return convertToDto(updatedUser);
+        // -----------------------------------------------------
+        // UPDATE LOGIN USER
+        // -----------------------------------------------------
+
+        commonUserRepository
+                .findByEmail(
+                        user.getEmail()
+                )
+                .ifPresent(loginUser -> {
+
+                    loginUser.setName(
+                            user.getName()
+                    );
+
+                    loginUser.setRole(
+                            user.getRole()
+                    );
+
+                    commonUserRepository.save(
+                            loginUser
+                    );
+                });
+
+
+        return convertToDto(
+                updated
+        );
     }
 
 
@@ -239,163 +717,121 @@ public class SuperAdminUsersService {
     // =========================================================
 
     public SuperAdminUserDto toggleStatus(
-            String employeeId
+            Long employeeId
     ) {
+
+        if (employeeId == null) {
+
+            throw new IllegalArgumentException(
+                    "Employee ID is required."
+            );
+        }
+
 
         SuperAdminUser user =
                 userRepository.findById(employeeId)
                         .orElseThrow(() ->
                                 new RuntimeException(
-                                        "User not found"
+                                        "User not found with employee ID: "
+                                                + employeeId
                                 )
                         );
 
 
-        if (user.getStatus() ==
-                SuperAdminUser.UserStatus.ACTIVE) {
+        boolean isActive =
+                Boolean.TRUE.equals(
+                        user.getActive()
+                );
 
-            user.setStatus(
-                    SuperAdminUser.UserStatus.INACTIVE
-            );
+
+        if (isActive) {
+
+            user.setActive(false);
+
+            user.setStatus("INACTIVE");
 
         } else {
 
-            user.setStatus(
-                    SuperAdminUser.UserStatus.ACTIVE
-            );
+            user.setActive(true);
+
+            user.setStatus("ACTIVE");
         }
 
 
+        SuperAdminUser updated =
+                userRepository.save(user);
+
+
         return convertToDto(
-                userRepository.save(user)
+                updated
         );
     }
 
 
     // =========================================================
-    // DELETE
+    // DELETE USER
     // =========================================================
 
     public void deleteUser(
-            String employeeId
+            Long employeeId
     ) {
 
-        if (!userRepository.existsById(employeeId)) {
+        if (employeeId == null) {
 
-            throw new RuntimeException(
-                    "User not found"
+            throw new IllegalArgumentException(
+                    "Employee ID is required."
             );
         }
 
-        userRepository.deleteById(employeeId);
+
+        SuperAdminUser user =
+                userRepository.findById(employeeId)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "User not found with employee ID: "
+                                                + employeeId
+                                )
+                        );
+
+
+        if (Boolean.TRUE.equals(
+                user.getActive()
+        )) {
+
+            throw new IllegalStateException(
+                    "Active users cannot be deleted. Disable the user first."
+            );
+        }
+
+
+        /*
+         * Delete corresponding login account.
+         */
+        commonUserRepository
+                .findByEmail(
+                        user.getEmail()
+                )
+                .ifPresent(
+                        commonUserRepository::delete
+                );
+
+
+        userRepository.delete(user);
     }
 
 
     // =========================================================
-    // VALIDATE CREATE FIELDS
+    // EMAIL VALIDATION
     // =========================================================
 
-    private void validateRequiredFields(
-            SuperAdminUserDto dto
+    private boolean isValidEmail(
+            String email
     ) {
 
-        if (dto.getEmployeeId() == null ||
-                dto.getEmployeeId().isBlank()) {
-
-            throw new RuntimeException(
-                    "Employee ID is required"
-            );
-        }
-
-        if (dto.getName() == null ||
-                dto.getName().isBlank()) {
-
-            throw new RuntimeException(
-                    "Name is required"
-            );
-        }
-
-        if (dto.getEmail() == null ||
-                dto.getEmail().isBlank()) {
-
-            throw new RuntimeException(
-                    "Email is required"
-            );
-        }
-
-        if (dto.getRole() == null ||
-                dto.getRole().isBlank()) {
-
-            throw new RuntimeException(
-                    "Role is required"
-            );
-        }
-
-        if (dto.getDepartment() == null ||
-                dto.getDepartment().isBlank()) {
-
-            throw new RuntimeException(
-                    "Department is required"
-            );
-        }
-
-        if (dto.getDesignation() == null ||
-                dto.getDesignation().isBlank()) {
-
-            throw new RuntimeException(
-                    "Designation is required"
-            );
-        }
-    }
-
-
-    // =========================================================
-    // VALIDATE UPDATE FIELDS
-    // =========================================================
-
-    private void validateUpdateFields(
-            SuperAdminUserDto dto
-    ) {
-
-        if (dto.getName() == null ||
-                dto.getName().isBlank()) {
-
-            throw new RuntimeException(
-                    "Name is required"
-            );
-        }
-
-        if (dto.getEmail() == null ||
-                dto.getEmail().isBlank()) {
-
-            throw new RuntimeException(
-                    "Email is required"
-            );
-        }
-
-        if (dto.getRole() == null ||
-                dto.getRole().isBlank()) {
-
-            throw new RuntimeException(
-                    "Role is required"
-            );
-        }
-
-        if (dto.getDepartment() == null ||
-                dto.getDepartment().isBlank()) {
-
-            throw new RuntimeException(
-                    "Department is required"
-            );
-        }
-
-        if (dto.getDesignation() == null ||
-                dto.getDesignation().isBlank()) {
-
-            throw new RuntimeException(
-                    "Designation is required"
-            );
-        }
+        return email != null &&
+                EMAIL_PATTERN.matcher(
+                        email
+                ).matches();
     }
 
 
@@ -407,110 +843,139 @@ public class SuperAdminUsersService {
             String password
     ) {
 
-        if (password.length() < 8) {
+        if (password == null ||
+                password.isBlank()) {
 
-            throw new RuntimeException(
-                    "Password must be at least 8 characters"
+            throw new IllegalArgumentException(
+                    "Password is required."
             );
         }
 
-        if (!password.matches(
-                ".*[A-Za-z].*"
-        )) {
 
-            throw new RuntimeException(
-                    "Password must contain at least one letter"
-            );
-        }
+        if (!PASSWORD_PATTERN.matcher(
+                password
+        ).matches()) {
 
-        if (!password.matches(
-                ".*[0-9].*"
-        )) {
-
-            throw new RuntimeException(
-                    "Password must contain at least one number"
-            );
-        }
-
-        if (!password.matches(
-                ".*[^A-Za-z0-9].*"
-        )) {
-
-            throw new RuntimeException(
-                    "Password must contain at least one special character"
+            throw new IllegalArgumentException(
+                    "Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number and one special character."
             );
         }
     }
 
 
     // =========================================================
-    // MODEL -> DTO
+    // INITIAL STATUS
+    // =========================================================
+
+    private String getInitialStatus(
+            String status
+    ) {
+
+        if (status == null ||
+                status.isBlank()) {
+
+            return "ACTIVE";
+        }
+
+
+        String normalized =
+                status.trim()
+                        .toUpperCase();
+
+
+        if (!normalized.equals("ACTIVE") &&
+                !normalized.equals("INACTIVE")) {
+
+            throw new IllegalArgumentException(
+                    "Status must be ACTIVE or INACTIVE."
+            );
+        }
+
+
+        return normalized;
+    }
+
+
+    // =========================================================
+    // CLEAN OPTIONAL VALUE
+    // =========================================================
+
+    private String cleanValue(
+            String value
+    ) {
+
+        if (value == null ||
+                value.isBlank()) {
+
+            return null;
+        }
+
+
+        return value.trim();
+    }
+
+
+    // =========================================================
+    // ENTITY → DTO
     // =========================================================
 
     private SuperAdminUserDto convertToDto(
             SuperAdminUser user
     ) {
 
-        SuperAdminUserDto dto =
-                new SuperAdminUserDto();
+        return SuperAdminUserDto.builder()
 
-        dto.setEmployeeId(
-                user.getEmployeeId()
-        );
+                .employeeId(
+                        user.getEmployeeId()
+                )
 
-        dto.setName(
-                user.getName()
-        );
-
-        dto.setEmail(
-                user.getEmail()
-        );
-
-        dto.setRole(
-                user.getRole()
-        );
-
-        dto.setDepartment(
-                user.getDepartment()
-        );
-
-        dto.setDesignation(
-                user.getDesignation()
-        );
-
-        /*
-         * Never return password.
-         */
-
-        dto.setPassword(null);
-
-        dto.setStatus(
-                user.getStatus().name()
-        );
-
-        if (user.getLastLogin() != null) {
-
-            dto.setLastLogin(
-                    user.getLastLogin().toString()
-            );
-
-        } else {
-
-            dto.setLastLogin("Never");
-        }
-
-        dto.setInitials(
-                generateInitials(
+                .name(
                         user.getName()
                 )
-        );
 
-        return dto;
+                .email(
+                        user.getEmail()
+                )
+
+                .role(
+                        user.getRole()
+                )
+
+                .department(
+                        user.getDepartment()
+                )
+
+                .designation(
+                        user.getDesignation()
+                )
+
+                /*
+                 * NEVER send password to frontend.
+                 */
+                .password(null)
+
+                .status(
+                        user.getStatus()
+                )
+
+                .lastLogin(
+                        user.getLastLogin() != null
+                                ? user.getLastLogin().toString()
+                                : "Never"
+                )
+
+                .initials(
+                        generateInitials(
+                                user.getName()
+                        )
+                )
+
+                .build();
     }
 
 
     // =========================================================
-    // GENERATE INITIALS
+    // INITIALS
     // =========================================================
 
     private String generateInitials(
@@ -518,38 +983,37 @@ public class SuperAdminUsersService {
     ) {
 
         if (name == null ||
-                name.trim().isEmpty()) {
+                name.isBlank()) {
 
             return "";
         }
 
+
         String[] parts =
-                name.trim().split("\\s+");
+                name.trim()
+                        .split("\\s+");
 
-        StringBuilder initials =
-                new StringBuilder();
 
-        for (String part : parts) {
+        if (parts.length == 1) {
 
-            if (!part.isEmpty()) {
-
-                initials.append(
-                        Character.toUpperCase(
-                                part.charAt(0)
-                        )
-                );
-            }
+            return parts[0]
+                    .substring(
+                            0,
+                            Math.min(
+                                    2,
+                                    parts[0].length()
+                            )
+                    )
+                    .toUpperCase();
         }
 
-        String result =
-                initials.toString();
 
-        return result.substring(
-                0,
-                Math.min(
-                        2,
-                        result.length()
-                )
-        );
+        return (
+                parts[0]
+                        .substring(0, 1)
+                        +
+                parts[parts.length - 1]
+                        .substring(0, 1)
+        ).toUpperCase();
     }
 }

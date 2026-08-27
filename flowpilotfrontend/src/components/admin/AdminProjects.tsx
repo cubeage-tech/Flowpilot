@@ -1,372 +1,541 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from "react";
 
-interface Project {
+interface AdminProject {
   id: number;
-  name: string;
-  members: number;
-  progress: number;
-  status: 'On Track' | 'At Risk' | 'Delayed';
+  projectCode: string;
+  projectName: string;
+  sprint?: string | null;
+  team?: string | null;
+  budget?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  status?: string | null;
+  progress?: number | null;
 }
 
-const projects: Project[] = [
-  {
-    id: 1,
-    name: 'IPMT Platform v2',
-    members: 12,
-    progress: 72,
-    status: 'On Track',
-  },
-  {
-    id: 2,
-    name: 'E-Commerce Relaunch',
-    members: 8,
-    progress: 45,
-    status: 'At Risk',
-  },
-  {
-    id: 3,
-    name: 'Mobile App Development',
-    members: 6,
-    progress: 22,
-    status: 'On Track',
-  },
-  {
-    id: 4,
-    name: 'API Gateway Migration',
-    members: 5,
-    progress: 58,
-    status: 'Delayed',
-  },
-];
+const AdminProjects: React.FC = () => {
+  const [projects, setProjects] = useState<AdminProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-export const AdminProjects: React.FC = () => {
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const token = localStorage.getItem('token');
+
+const response = await fetch(
+  'http://localhost:8080/api/admin/projects',
+  {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load projects. Server returned ${response.status}.`
+          );
+        }
+
+        const data: AdminProject[] = await response.json();
+
+        setProjects(data);
+      } catch (err) {
+        console.error("Error loading admin projects:", err);
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load projects."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProjects();
+  }, []);
+
+  /* ============================================================
+     PROJECT STATUS
+  ============================================================ */
+
+  const getStatus = (status?: string | null) => {
+    if (!status) {
+      return "On Track";
+    }
+
+    const value = status.toLowerCase().trim();
+
+    if (
+      value.includes("risk") ||
+      value.includes("blocked") ||
+      value.includes("at risk")
+    ) {
+      return "At Risk";
+    }
+
+    if (
+      value.includes("delay") ||
+      value.includes("delayed")
+    ) {
+      return "Delayed";
+    }
+
+    return "On Track";
+  };
+
+  /* ============================================================
+     SUMMARY COUNTS
+  ============================================================ */
+
+  const totalProjects = projects.length;
+
+  const inProgressProjects = useMemo(() => {
+    return projects.filter((project) => {
+      const status = project.status?.toLowerCase().trim();
+
+      return (
+        status === "in progress" ||
+        status === "in-progress" ||
+        status === "active" ||
+        status === "ongoing"
+      );
+    }).length;
+  }, [projects]);
+
+  const atRiskProjects = useMemo(() => {
+    return projects.filter((project) => {
+      const status = project.status?.toLowerCase().trim();
+
+      return (
+        status?.includes("risk") ||
+        status?.includes("blocked")
+      );
+    }).length;
+  }, [projects]);
+
+  /* ============================================================
+     HELPERS
+  ============================================================ */
+
+  const getProgress = (progress?: number | null) => {
+    if (progress === null || progress === undefined) {
+      return 0;
+    }
+
+    return Math.min(100, Math.max(0, Number(progress)));
+  };
+
+  const getStatusClasses = (status?: string | null) => {
+    const currentStatus = getStatus(status);
+
+    if (currentStatus === "At Risk") {
+      return {
+        badge: "bg-[#fff1f1] text-[#ff4d4d]",
+        dot: "bg-[#ff4d4d]",
+      };
+    }
+
+    if (currentStatus === "Delayed") {
+      return {
+        badge: "bg-[#fff7e8] text-[#e99a00]",
+        dot: "bg-[#e99a00]",
+      };
+    }
+
+    return {
+      badge: "bg-[#eafaf2] text-[#20c978]",
+      dot: "bg-[#20c978]",
+    };
+  };
+
+  /* ============================================================
+     LOADING
+  ============================================================ */
+
+  if (loading) {
+    return (
+      <div className="w-full bg-[#f5f6f8] px-6 py-5">
+        <div className="mb-6">
+          <h1 className="text-[17px] font-bold leading-[20px] text-[#111827]">
+            Projects
+          </h1>
+
+          <p className="mt-[2px] text-[10px] leading-[14px] text-[#9aa1ad]">
+            Projects created by Project Managers
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-[#eeeeee] bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-center py-10">
+            <p className="text-[11px] text-[#9aa1ad]">
+              Loading projects...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ============================================================
+     ERROR
+  ============================================================ */
+
+  if (error) {
+    return (
+      <div className="w-full bg-[#f5f6f8] px-6 py-5">
+        <div className="mb-6">
+          <h1 className="text-[17px] font-bold leading-[20px] text-[#111827]">
+            Projects
+          </h1>
+
+          <p className="mt-[2px] text-[10px] leading-[14px] text-[#9aa1ad]">
+            Projects created by Project Managers
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-[#eeeeee] bg-white p-6 shadow-sm">
+          <div className="rounded-lg border border-[#ffd4d4] bg-[#fff5f5] px-4 py-3">
+            <p className="text-[11px] font-semibold text-[#ff4d4d]">
+              Unable to load projects
+            </p>
+
+            <p className="mt-1 text-[10px] text-[#9a6b6b]">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-3 rounded-md bg-[#20c978] px-3 py-1.5 text-[10px] font-semibold text-white transition hover:opacity-90"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ============================================================
+     MAIN PAGE
+  ============================================================ */
+
   return (
-    <div className="w-full space-y-5 font-sans">
+    <div className="w-full bg-[#f5f6f8] px-6 py-5">
 
-      {/* ==================== SUMMARY CARDS ==================== */}
+      {/* ========================================================
+          PAGE HEADER
+      ======================================================== */}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mb-6">
+        <h1 className="text-[17px] font-bold leading-[20px] text-[#111827]">
+          Projects
+        </h1>
+
+        <p className="mt-[2px] text-[10px] leading-[14px] text-[#9aa1ad]">
+          Projects created by Project Managers
+        </p>
+      </div>
+
+      {/* ========================================================
+          SUMMARY CARDS
+      ======================================================== */}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
 
         {/* TOTAL PROJECTS */}
 
-        <div
-          className="
-            rounded-xl
-            border border-slate-200/80
-            bg-white
-            px-4 py-5
-            shadow-[0_3px_12px_rgba(15,23,42,0.04)]
-            transition-shadow
-            hover:shadow-[0_4px_16px_rgba(15,23,42,0.06)]
-          "
-        >
-          <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">
+        <div className="rounded-xl border border-[#eeeeee] bg-white px-5 py-4 shadow-sm">
+          <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#7c8796]">
             Total Projects
           </p>
 
-          <p className="mt-2 text-[26px] font-extrabold leading-none text-amber-500">
-            24
+          <p className="mt-3 text-[25px] font-semibold leading-none text-[#111827]">
+            {totalProjects}
+          </p>
+
+          <p className="mt-3 text-[10px] font-medium text-[#32d583]">
+            All PM projects
           </p>
         </div>
-
 
         {/* IN PROGRESS */}
 
-        <div
-          className="
-            rounded-xl
-            border border-slate-200/80
-            bg-white
-            px-4 py-5
-            shadow-[0_3px_12px_rgba(15,23,42,0.04)]
-            transition-shadow
-            hover:shadow-[0_4px_16px_rgba(15,23,42,0.06)]
-          "
-        >
-          <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">
+        <div className="rounded-xl border border-[#eeeeee] bg-white px-5 py-4 shadow-sm">
+          <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#7c8796]">
             In Progress
           </p>
 
-          <p className="mt-2 text-[26px] font-extrabold leading-none text-emerald-500">
-            16
+          <p className="mt-3 text-[25px] font-semibold leading-none text-[#111827]">
+            {inProgressProjects}
+          </p>
+
+          <p className="mt-3 text-[10px] font-medium text-[#32d583]">
+            Active projects
           </p>
         </div>
-
 
         {/* BLOCKED / AT RISK */}
 
-        <div
-          className="
-            rounded-xl
-            border border-slate-200/80
-            bg-white
-            px-4 py-5
-            shadow-[0_3px_12px_rgba(15,23,42,0.04)]
-            transition-shadow
-            hover:shadow-[0_4px_16px_rgba(15,23,42,0.06)]
-          "
-        >
-          <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">
+        <div className="rounded-xl border border-[#eeeeee] bg-white px-5 py-4 shadow-sm">
+          <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-[#7c8796]">
             Blocked / At Risk
           </p>
 
-          <p className="mt-2 text-[26px] font-extrabold leading-none text-rose-500">
-            5
+          <p className="mt-3 text-[25px] font-semibold leading-none text-[#111827]">
+            {atRiskProjects}
+          </p>
+
+          <p className="mt-3 text-[10px] font-medium text-[#ff3b3b]">
+            Requires attention
           </p>
         </div>
-
       </div>
 
+      {/* ========================================================
+          PROJECT LIST
+      ======================================================== */}
 
-      {/* ==================== PROJECT LIST ==================== */}
+      <div className="mt-5 overflow-hidden rounded-xl border border-[#eeeeee] bg-white shadow-sm">
 
-      <div
-        className="
-          overflow-hidden
-          rounded-xl
-          border border-slate-200/80
-          bg-white
-          shadow-[0_3px_12px_rgba(15,23,42,0.04)]
-        "
-      >
+        {/* HEADER */}
 
-        {/* TITLE */}
-
-        <div className="px-4 py-5 pb-0 sm:px-5">
-
-          <h2 className="text-[15px] font-bold text-slate-900">
+        <div className="px-5 pb-3 pt-5">
+          <h2 className="text-[12px] font-semibold text-[#111827]">
             Project List
           </h2>
-
         </div>
 
+        {/* ======================================================
+            EMPTY STATE
+        ====================================================== */}
 
-        {/* ==================== DESKTOP / TABLET PROJECT LIST ==================== */}
+        {projects.length === 0 ? (
+          <div className="border-t border-[#eeeeee] px-5 py-12 text-center">
+            <p className="text-[11px] font-semibold text-[#111827]">
+              No projects found
+            </p>
 
-        <div className="hidden sm:block">
+            <p className="mt-1 text-[9px] text-[#a1a8b3]">
+              Projects created by Project Managers will appear here
+              automatically.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* ==================================================
+                DESKTOP / TABLET LIST
+            ================================================== */}
 
-          {projects.map((project, index) => (
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-t border-b border-[#eeeeee]">
+                    <th className="px-5 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#9aa1ad]">
+                      Project
+                    </th>
 
-            <div
-              key={project.id}
-              className={`
-                flex
-                items-center
-                justify-between
-                gap-5
-                px-5
-                py-3
-                transition-colors
-                hover:bg-slate-50/60
-                ${
-                  index !== projects.length - 1
-                    ? 'border-b border-slate-100'
-                    : ''
-                }
-              `}
-            >
+                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#9aa1ad]">
+                      Code
+                    </th>
 
-              {/* PROJECT INFORMATION */}
+                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#9aa1ad]">
+                      Sprint
+                    </th>
 
-              <div className="min-w-0 flex-1">
+                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#9aa1ad]">
+                      Team
+                    </th>
 
-                <h3 className="text-[14px] font-bold text-slate-900">
-                  {project.name}
-                </h3>
+                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#9aa1ad]">
+                      Status
+                    </th>
 
-                <p className="mt-1 text-[12px] font-medium text-slate-500">
-                  {project.members} members
-                </p>
-
-              </div>
-
-
-              {/* RIGHT SIDE */}
-
-              <div className="flex shrink-0 items-center gap-4">
-
-
-                {/* PROGRESS */}
-
-                <div className="w-[145px]">
-
-                  {/* PROGRESS LABEL + PERCENTAGE */}
-
-                  <div className="mb-1 flex items-center justify-between">
-
-                    <span className="text-[11px] font-medium text-slate-500">
+                    <th className="px-4 py-3 text-left text-[9px] font-semibold uppercase tracking-[0.06em] text-[#9aa1ad]">
                       Progress
-                    </span>
+                    </th>
+                  </tr>
+                </thead>
 
-                    <span className="text-[11px] font-extrabold text-slate-700">
-                      {project.progress}%
-                    </span>
+                <tbody>
+                  {projects.map((project) => {
+                    const progress = getProgress(project.progress);
+                    const statusClasses = getStatusClasses(
+                      project.status
+                    );
 
-                  </div>
+                    return (
+                      <tr
+                        key={project.id}
+                        className="border-b border-[#eeeeee] last:border-b-0"
+                      >
+                        {/* PROJECT */}
 
-                  {/* PROGRESS BAR */}
+                        <td className="px-5 py-4">
+                          <p className="max-w-[220px] truncate text-[11px] font-semibold text-[#111827]">
+                            {project.projectName}
+                          </p>
+                        </td>
 
-                  <div className="h-[5px] w-full overflow-hidden rounded-full bg-slate-100">
+                        {/* CODE */}
 
-                    <div
-                      className={`h-full rounded-full ${
-                        project.status === 'On Track'
-                        ? 'bg-emerald-500'
-                        : project.status === 'At Risk'
-                        ? 'bg-amber-500'
-                        : 'bg-rose-500'
-                      }`}
-                      style={{
-                        width: `${project.progress}%`,
-                      }}
-                    />
+                        <td className="px-4 py-4">
+                          <span className="text-[9px] font-medium text-[#7c8796]">
+                            {project.projectCode || "—"}
+                          </span>
+                        </td>
 
+                        {/* SPRINT */}
+
+                        <td className="px-4 py-4">
+                          <span className="text-[9px] text-[#7c8796]">
+                            {project.sprint || "—"}
+                          </span>
+                        </td>
+
+                        {/* TEAM */}
+
+                        <td className="px-4 py-4">
+                          <span className="text-[9px] text-[#7c8796]">
+                            {project.team || "—"}
+                          </span>
+                        </td>
+
+                        {/* STATUS */}
+
+                        <td className="px-4 py-4">
+                          <span
+                            className={`inline-flex items-center gap-[5px] rounded-md px-2 py-[4px] text-[9px] font-medium ${statusClasses.badge}`}
+                          >
+                            <span
+                              className={`h-[5px] w-[5px] rounded-full ${statusClasses.dot}`}
+                            />
+
+                            {getStatus(project.status)}
+                          </span>
+                        </td>
+
+                        {/* PROGRESS */}
+
+                        <td className="min-w-[130px] px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-[#edf0f2]">
+                              <div
+                                className="h-full rounded-full bg-[#32d583] transition-all duration-500"
+                                style={{
+                                  width: `${progress}%`,
+                                }}
+                              />
+                            </div>
+
+                            <span className="w-[28px] text-right text-[9px] font-semibold text-[#7c8796]">
+                              {progress}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ==================================================
+                MOBILE LIST
+            ================================================== */}
+
+            <div className="divide-y divide-[#eeeeee] md:hidden">
+              {projects.map((project) => {
+                const progress = getProgress(project.progress);
+                const statusClasses = getStatusClasses(
+                  project.status
+                );
+
+                return (
+                  <div
+                    key={project.id}
+                    className="px-5 py-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+
+                      <div className="min-w-0">
+                        <p className="truncate text-[11px] font-semibold text-[#111827]">
+                          {project.projectName}
+                        </p>
+
+                        <p className="mt-1 text-[9px] text-[#9aa1ad]">
+                          {project.projectCode || "No code"}
+                        </p>
+                      </div>
+
+                      <span
+                        className={`inline-flex shrink-0 items-center gap-[5px] rounded-md px-2 py-[4px] text-[9px] font-medium ${statusClasses.badge}`}
+                      >
+                        <span
+                          className={`h-[5px] w-[5px] rounded-full ${statusClasses.dot}`}
+                        />
+
+                        {getStatus(project.status)}
+                      </span>
                     </div>
 
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[8px] uppercase tracking-[0.06em] text-[#a1a8b3]">
+                          Sprint
+                        </p>
+
+                        <p className="mt-1 text-[9px] text-[#7c8796]">
+                          {project.sprint || "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[8px] uppercase tracking-[0.06em] text-[#a1a8b3]">
+                          Team
+                        </p>
+
+                        <p className="mt-1 text-[9px] text-[#7c8796]">
+                          {project.team || "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="mb-1 flex items-center justify-between">
+                        <p className="text-[8px] uppercase tracking-[0.06em] text-[#a1a8b3]">
+                          Progress
+                        </p>
+
+                        <p className="text-[9px] font-semibold text-[#7c8796]">
+                          {progress}%
+                        </p>
+                      </div>
+
+                      <div className="h-[5px] overflow-hidden rounded-full bg-[#edf0f2]">
+                        <div
+                          className="h-full rounded-full bg-[#32d583] transition-all duration-500"
+                          style={{
+                            width: `${progress}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
-
-
-                {/* STATUS */}
-
-                <div className="w-[68px]">
-
-                  <span
-                    className={`
-                      inline-flex
-                      h-7
-                      min-w-[80px]
-                      items-center
-                      justify-center
-                      rounded-md
-                      border
-                      px-2.5
-                      text-[11px]
-                      font-extrabold
-                      ${
-                        project.status === 'On Track'
-                        ? 'border-emerald-100 bg-emerald-50 text-emerald-500'
-                        : project.status === 'At Risk'
-                        ? 'border-amber-100 bg-amber-50 text-amber-500'
-                        : 'border-rose-100 bg-rose-50 text-rose-500'
-                      }
-                    `}
-                  >
-                    {project.status}
-                  </span>
-
-                </div>
-
-              </div>
-
+                );
+              })}
             </div>
-
-          ))}
-
-        </div>
-
-
-        {/* ==================== MOBILE PROJECT CARDS ==================== */}
-
-        <div className="space-y-3 p-3 sm:hidden">
-
-          {projects.map((project) => (
-
-            <div
-              key={project.id}
-              className="
-                rounded-xl
-                border border-slate-100
-                bg-white
-                p-4
-                shadow-[0_2px_10px_rgba(15,23,42,0.04)]
-              "
-            >
-
-              {/* PROJECT NAME + STATUS */}
-
-              <div className="flex items-start justify-between gap-3">
-
-                <div className="min-w-0">
-
-                  <h3 className="text-[14px] font-bold text-slate-900">
-                    {project.name}
-                  </h3>
-
-                  <p className="mt-1 text-[12px] font-medium text-slate-500">
-                    {project.members} members
-                  </p>
-
-                </div>
-
-
-                {/* STATUS */}
-
-                <span
-                  className={`
-                    shrink-0
-                    rounded-md
-                    px-2.5
-                    py-1
-                    text-[11px]
-                    font-bold
-                    ${
-                      project.status === 'On Track'
-                        ? 'bg-emerald-50 text-emerald-500'
-                        : project.status === 'At Risk'
-                        ? 'bg-amber-50 text-amber-500'
-                        : 'bg-rose-50 text-rose-500'
-                    }
-                  `}
-                >
-                  {project.status}
-                </span>
-
-              </div>
-
-
-              {/* PROGRESS */}
-
-              <div className="mt-5">
-
-                <div className="mb-1.5 flex items-center justify-between">
-
-                  <span className="text-[11px] font-medium text-slate-500">
-                    Progress
-                  </span>
-
-                  <span className="text-[12px] font-bold text-slate-700">
-                    {project.progress}%
-                  </span>
-
-                </div>
-
-                <div className="h-[5px] w-full overflow-hidden rounded-full bg-slate-100">
-
-                  <div
-                    className={`h-full rounded-full ${
-                      project.status === 'On Track'
-                        ? 'bg-emerald-500'
-                        : project.status === 'At Risk'
-                        ? 'bg-amber-500'
-                        : 'bg-rose-500'
-                    }`}
-                    style={{
-                      width: `${project.progress}%`,
-                    }}
-                  />
-
-                </div>
-
-              </div>
-
-            </div>
-
-          ))}
-
-        </div>
-
+          </>
+        )}
       </div>
-
     </div>
   );
 };

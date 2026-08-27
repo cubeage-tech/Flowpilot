@@ -2,10 +2,12 @@ package com.flowpilot.flowpilot.superadmin.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -18,48 +20,61 @@ import java.time.LocalDateTime;
 @Table(name = "superadmin_users")
 @Getter
 @Setter
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class SuperAdminUser {
 
     @Id
-    @Column(
-            name = "employee_id",
-            nullable = false,
-            unique = true,
-            length = 50
-    )
-    private String employeeId;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Long employeeId;
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(nullable = false, unique = true, length = 150)
+    @Column(name = "email", nullable = false)
     private String email;
 
-    @Column(nullable = false, length = 50)
-    private String role;
-
-    @Column(nullable = false, length = 100)
-    private String department;
-
-    @Column(nullable = false, length = 100)
-    private String designation;
-
-    @Column(nullable = false, length = 255)
+    @Column(name = "password", nullable = false)
     private String password;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    @Builder.Default
-    private UserStatus status = UserStatus.ACTIVE;
+    @Column(name = "role")
+    private String role;
+
+    @Column(name = "department")
+    private String department;
+
+    @Column(name = "designation")
+    private String designation;
+
+    @Column(name = "status")
+    private String status;
 
     @Column(name = "last_login")
     private LocalDateTime lastLogin;
 
-    public enum UserStatus {
-        ACTIVE,
-        INACTIVE
+    @Column(name = "active", nullable = false)
+    @Builder.Default
+    private Boolean active = true;
+
+    @Column(name = "created_at", nullable = false)
+    @Builder.Default
+    private LocalDateTime createdAt = LocalDateTime.now();
+
+    @PrePersist
+    protected void onCreate() {
+
+        if (active == null) {
+            active = true;
+        }
+
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+
+        if (status == null || status.isBlank()) {
+            status = "ACTIVE";
+        }
     }
 }

@@ -1,401 +1,708 @@
-import React from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
-interface CoverageModule {
-  name: string;
-  cases: number;
-  percentage: number;
-  color: "green" | "orange" | "red";
+import axios from "axios";
+
+interface TestCase {
+  id: number;
+  testId: string;
+  title: string;
+  type: string;
+  linkedTask: string;
+  priority: string;
+  status: string;
+  assignedTo?: string | number;
+  assignedToId?: string | number;
+  assignedUserId?: string | number;
+  project?: string;
+  projectId?: number;
+  createdAt?: string;
 }
 
-const QATestCoverage: React.FC = () => {
-  const modules: CoverageModule[] = [
-    {
-      name: "Authentication & JWT",
-      cases: 12,
-      percentage: 92,
-      color: "green",
-    },
-    {
-      name: "Task Management",
-      cases: 18,
-      percentage: 78,
-      color: "orange",
-    },
-    {
-      name: "Sprint Board",
-      cases: 14,
-      percentage: 65,
-      color: "orange",
-    },
-    {
-      name: "File Upload / S3",
-      cases: 8,
-      percentage: 55,
-      color: "red",
-    },
-    {
-      name: "Notifications",
-      cases: 10,
-      percentage: 40,
-      color: "red",
-    },
-    {
-      name: "Analytics / Charts",
-      cases: 9,
-      percentage: 88,
-      color: "green",
-    },
+interface StoredUser {
+  id?: string | number;
+  userId?: string | number;
+  employeeId?: string | number;
+  name?: string;
+  fullName?: string;
+  username?: string;
+  email?: string;
+}
+
+const API_URL =
+  "http://localhost:8080/api/qa/test-cases";
+
+const normalize = (
+  value: unknown
+): string => {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+};
+
+const getCurrentUser =
+  (): StoredUser | null => {
+
+    const keys = [
+      "currentUser",
+      "user",
+      "auth",
+      "userData",
+      "loggedInUser",
+    ];
+
+    for (const key of keys) {
+
+      const value =
+        localStorage.getItem(key) ||
+        sessionStorage.getItem(key);
+
+      if (!value) {
+        continue;
+      }
+
+      try {
+
+        const parsed =
+          JSON.parse(value);
+
+        const user =
+          parsed?.user ??
+          parsed?.data?.user ??
+          parsed?.data ??
+          parsed;
+
+        if (
+          user?.id ||
+          user?.userId ||
+          user?.employeeId ||
+          user?.name ||
+          user?.fullName ||
+          user?.username ||
+          user?.email
+        ) {
+          return user;
+        }
+
+      } catch {
+        // Continue.
+      }
+    }
+
+    return {
+      id:
+        localStorage.getItem(
+          "userId"
+        ) ||
+        localStorage.getItem("id") ||
+        sessionStorage.getItem(
+          "userId"
+        ) ||
+        sessionStorage.getItem(
+          "id"
+        ) ||
+        undefined,
+
+      userId:
+        localStorage.getItem(
+          "userId"
+        ) ||
+        sessionStorage.getItem(
+          "userId"
+        ) ||
+        undefined,
+
+      employeeId:
+        localStorage.getItem(
+          "employeeId"
+        ) ||
+        sessionStorage.getItem(
+          "employeeId"
+        ) ||
+        undefined,
+
+      name:
+        localStorage.getItem("name") ||
+        localStorage.getItem(
+          "fullName"
+        ) ||
+        sessionStorage.getItem(
+          "name"
+        ) ||
+        sessionStorage.getItem(
+          "fullName"
+        ) ||
+        undefined,
+
+      fullName:
+        localStorage.getItem(
+          "fullName"
+        ) ||
+        sessionStorage.getItem(
+          "fullName"
+        ) ||
+        undefined,
+
+      username:
+        localStorage.getItem(
+          "username"
+        ) ||
+        sessionStorage.getItem(
+          "username"
+        ) ||
+        undefined,
+
+      email:
+        localStorage.getItem("email") ||
+        sessionStorage.getItem(
+          "email"
+        ) ||
+        undefined,
+    };
+  };
+
+const getToken = () => {
+
+  const keys = [
+    "token",
+    "jwt",
+    "accessToken",
+    "authToken",
+    "access_token",
+    "jwtToken",
   ];
 
-  const getProgressColor = (color: CoverageModule["color"]) => {
-    switch (color) {
-      case "green":
-        return "bg-[#5ED6A0]";
+  for (const key of keys) {
 
-      case "orange":
-        return "bg-[#F59E0B]";
+    const value =
+      localStorage.getItem(key) ||
+      sessionStorage.getItem(key);
 
-      case "red":
-        return "bg-[#F04444]";
+    if (value) {
 
-      default:
-        return "bg-gray-300";
+      return value.replace(
+        /^Bearer\s+/i,
+        ""
+      );
     }
-  };
+  }
 
-  const getPercentageColor = (color: CoverageModule["color"]) => {
-    switch (color) {
-      case "green":
-        return "text-[#18B968]";
+  return "";
+};
 
-      case "orange":
-        return "text-[#F59E0B]";
+const belongsToUser = (
+  assignedTo: unknown,
+  user: StoredUser | null
+) => {
 
-      case "red":
-        return "text-[#F04444]";
+  if (
+    !user ||
+    assignedTo === undefined ||
+    assignedTo === null
+  ) {
+    return false;
+  }
 
-      default:
-        return "text-gray-500";
-    }
-  };
+  const assigned =
+    normalize(assignedTo);
 
-  return (
-    <div
-      className="w-full"
-      style={{
-        fontFamily:
-          "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      }}
-    >
-      {/* =========================================================
-          SUMMARY CARDS
-          ========================================================= */}
+  const userValues = [
+    user.id,
+    user.userId,
+    user.employeeId,
+    user.name,
+    user.fullName,
+    user.username,
+    user.email,
+  ]
+    .filter(
+      (value) =>
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+    )
+    .map(normalize);
 
-      <div
-        className="
-          grid
-          w-full
-          grid-cols-1
-          gap-[13px]
-          sm:grid-cols-2
-          xl:grid-cols-4
-        "
-      >
-        {/* TOTAL TEST CASES */}
-
-        <div
-          className="
-            box-border
-            h-[82px]
-            rounded-[12px]
-            border
-            border-[#E9EDF0]
-            bg-white
-            px-[19px]
-            py-[14px]
-            shadow-[0_2px_8px_rgba(0,0,0,0.035)]
-          "
-        >
-          <p
-            className="
-              m-0
-              text-[9px]
-              font-[600]
-              uppercase
-              leading-[12px]
-              tracking-[0.65px]
-              text-[#9299A3]
-            "
-          >
-            Total Test Cases
-          </p>
-
-          <p
-            className="
-              m-0
-              mt-[8px]
-              text-[23px]
-              font-[700]
-              leading-[24px]
-              tracking-[-0.4px]
-              text-[#5ED6A0]
-            "
-          >
-            48
-          </p>
-        </div>
-
-        {/* EXECUTED */}
-
-        <div
-          className="
-            box-border
-            h-[82px]
-            rounded-[12px]
-            border
-            border-[#E9EDF0]
-            bg-white
-            px-[19px]
-            py-[14px]
-            shadow-[0_2px_8px_rgba(0,0,0,0.035)]
-          "
-        >
-          <p
-            className="
-              m-0
-              text-[9px]
-              font-[600]
-              uppercase
-              leading-[12px]
-              tracking-[0.65px]
-              text-[#9299A3]
-            "
-          >
-            Executed
-          </p>
-
-          <p
-            className="
-              m-0
-              mt-[8px]
-              text-[23px]
-              font-[700]
-              leading-[24px]
-              tracking-[-0.4px]
-              text-[#20B957]
-            "
-          >
-            40
-          </p>
-        </div>
-
-        {/* PASSED */}
-
-        <div
-          className="
-            box-border
-            h-[82px]
-            rounded-[12px]
-            border
-            border-[#E9EDF0]
-            bg-white
-            px-[19px]
-            py-[14px]
-            shadow-[0_2px_8px_rgba(0,0,0,0.035)]
-          "
-        >
-          <p
-            className="
-              m-0
-              text-[9px]
-              font-[600]
-              uppercase
-              leading-[12px]
-              tracking-[0.65px]
-              text-[#9299A3]
-            "
-          >
-            Passed
-          </p>
-
-          <p
-            className="
-              m-0
-              mt-[8px]
-              text-[23px]
-              font-[700]
-              leading-[24px]
-              tracking-[-0.4px]
-              text-[#20B957]
-            "
-          >
-            34
-          </p>
-        </div>
-
-        {/* FAILED / BLOCKED */}
-
-        <div
-          className="
-            box-border
-            h-[82px]
-            rounded-[12px]
-            border
-            border-[#E9EDF0]
-            bg-white
-            px-[19px]
-            py-[14px]
-            shadow-[0_2px_8px_rgba(0,0,0,0.035)]
-          "
-        >
-          <p
-            className="
-              m-0
-              text-[9px]
-              font-[600]
-              uppercase
-              leading-[12px]
-              tracking-[0.65px]
-              text-[#9299A3]
-            "
-          >
-            Failed / Blocked
-          </p>
-
-          <p
-            className="
-              m-0
-              mt-[8px]
-              text-[23px]
-              font-[700]
-              leading-[24px]
-              tracking-[-0.4px]
-              text-[#F04444]
-            "
-          >
-            6
-          </p>
-        </div>
-      </div>
-
-      {/* =========================================================
-          COVERAGE BY MODULE
-          ========================================================= */}
-
-      <div
-        className="
-          mt-[18px]
-          box-border
-          w-full
-          rounded-[13px]
-          border
-          border-[#E9EDF0]
-          bg-white
-          px-[19px]
-          py-[19px]
-          shadow-[0_2px_8px_rgba(0,0,0,0.035)]
-        "
-      >
-        {/* SECTION TITLE */}
-
-        <h2
-          className="
-            m-0
-            text-[12px]
-            font-[700]
-            leading-[15px]
-            tracking-[-0.05px]
-            text-[#111827]
-          "
-        >
-          Coverage by Module
-        </h2>
-
-        {/* MODULE LIST */}
-
-        <div className="mt-[14px] space-y-[11px]">
-          {modules.map((module) => (
-            <div key={module.name} className="w-full">
-              {/* TOP ROW */}
-
-              <div
-                className="
-                  mb-[6px]
-                  flex
-                  w-full
-                  items-center
-                  justify-between
-                "
-              >
-                {/* MODULE NAME */}
-
-                <p
-                  className="
-                    m-0
-                    text-[10px]
-                    font-[600]
-                    leading-[13px]
-                    text-[#1F2937]
-                  "
-                >
-                  {module.name}
-                </p>
-
-                {/* CASES + PERCENTAGE */}
-
-                <div className="flex shrink-0 items-center gap-[9px]">
-                  <span
-                    className="
-                      text-[9px]
-                      font-[400]
-                      leading-[12px]
-                      text-[#A1A7AF]
-                    "
-                  >
-                    {module.cases} cases
-                  </span>
-
-                  <span
-                    className={`
-                      text-[10px]
-                      font-[700]
-                      leading-[12px]
-                      ${getPercentageColor(module.color)}
-                    `}
-                  >
-                    {module.percentage}%
-                  </span>
-                </div>
-              </div>
-
-              {/* PROGRESS BAR */}
-
-              <div
-                className="
-                  h-[6px]
-                  w-full
-                  overflow-hidden
-                  rounded-full
-                  bg-[#F0F1F3]
-                "
-              >
-                <div
-                  className={`
-                    h-full
-                    rounded-full
-                    ${getProgressColor(module.color)}
-                  `}
-                  style={{
-                    width: `${module.percentage}%`,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+  return userValues.includes(
+    assigned
   );
 };
+
+const QATestCoverage: React.FC =
+  () => {
+
+    const [testCases, setTestCases] =
+      useState<TestCase[]>([]);
+
+    const [loading, setLoading] =
+      useState(true);
+
+    const [error, setError] =
+      useState("");
+
+    const loadCoverage =
+      useCallback(async () => {
+
+        try {
+
+          setLoading(true);
+          setError("");
+
+          const user =
+            getCurrentUser();
+
+          const token =
+            getToken();
+
+          const response =
+            await axios.get(
+              API_URL,
+              token
+                ? {
+                    headers: {
+                      Authorization:
+                        `Bearer ${token}`,
+                      "Content-Type":
+                        "application/json",
+                    },
+                  }
+                : {}
+            );
+
+          const result =
+            response.data;
+
+          const allTests: TestCase[] =
+            Array.isArray(result)
+              ? result
+              : Array.isArray(
+                  result?.data
+                )
+              ? result.data
+              : Array.isArray(
+                  result?.testCases
+                )
+              ? result.testCases
+              : [];
+
+          /*
+           * ONLY CURRENT USER
+           */
+          const mine =
+            allTests.filter(
+              (test) =>
+                belongsToUser(
+                  test.assignedTo,
+                  user
+                )
+            );
+
+          setTestCases(mine);
+
+        } catch (err: any) {
+
+          console.error(
+            "Failed to load test coverage:",
+            err
+          );
+
+          if (
+            err?.response?.status ===
+            401
+          ) {
+            setError(
+              "Authentication required. Please login again."
+            );
+          } else if (
+            err?.response?.status ===
+            403
+          ) {
+            setError(
+              "Access denied. Please login again."
+            );
+          } else {
+            setError(
+              "Failed to load test coverage."
+            );
+          }
+
+        } finally {
+
+          setLoading(false);
+        }
+
+      }, []);
+
+    useEffect(() => {
+      loadCoverage();
+    }, [loadCoverage]);
+
+    /*
+     * =======================================================
+     * REAL SUMMARY COUNTS
+     * =======================================================
+     */
+
+    const total =
+      testCases.length;
+
+    const executed =
+      testCases.filter(
+        (test) =>
+          [
+            "passed",
+            "failed",
+            "blocked",
+            "in testing",
+          ].includes(
+            normalize(
+              test.status
+            )
+          )
+      ).length;
+
+    const passed =
+      testCases.filter(
+        (test) =>
+          normalize(
+            test.status
+          ) === "passed"
+      ).length;
+
+    const failedBlocked =
+      testCases.filter(
+        (test) =>
+          [
+            "failed",
+            "blocked",
+          ].includes(
+            normalize(
+              test.status
+            )
+          )
+      ).length;
+
+    /*
+     * =======================================================
+     * REAL MODULE / PROJECT COVERAGE
+     *
+     * Your current QATestCase has "project".
+     * So we use the actual project value as the module
+     * grouping instead of inventing module names.
+     * =======================================================
+     */
+
+    const moduleMap =
+      new Map<
+        string,
+        {
+          cases: number;
+          executed: number;
+        }
+      >();
+
+    testCases.forEach(
+      (test) => {
+
+        const module =
+          test.project?.trim() ||
+          "Unassigned";
+
+        const current =
+          moduleMap.get(
+            module
+          ) || {
+            cases: 0,
+            executed: 0,
+          };
+
+        current.cases++;
+
+        if (
+          [
+            "passed",
+            "failed",
+            "blocked",
+            "in testing",
+          ].includes(
+            normalize(
+              test.status
+            )
+          )
+        ) {
+          current.executed++;
+        }
+
+        moduleMap.set(
+          module,
+          current
+        );
+      }
+    );
+
+    const coverageData =
+      Array.from(
+        moduleMap.entries()
+      ).map(
+        ([name, values]) => {
+
+          const percentage =
+            values.cases === 0
+              ? 0
+              : Math.round(
+                  (values.executed /
+                    values.cases) *
+                  100
+                );
+
+          return {
+            name,
+            cases:
+              values.cases,
+            percentage,
+          };
+        }
+      );
+
+    /*
+     * =======================================================
+     * COVERAGE COLORS
+     * =======================================================
+     */
+
+    const getBarColor = (
+      percentage: number
+    ) => {
+
+      if (percentage >= 80) {
+        return "bg-emerald-400";
+      }
+
+      if (percentage >= 70) {
+        return "bg-amber-500";
+      }
+
+      if (percentage >= 60) {
+        return "bg-orange-500";
+      }
+
+      return "bg-red-500";
+    };
+
+    const getTextColor = (
+      percentage: number
+    ) => {
+
+      if (percentage >= 80) {
+        return "text-emerald-500";
+      }
+
+      if (percentage >= 70) {
+        return "text-amber-500";
+      }
+
+      if (percentage >= 60) {
+        return "text-orange-500";
+      }
+
+      return "text-red-500";
+    };
+
+    return (
+      <div className="w-full min-h-full bg-[#f8fafc] text-slate-800">
+
+        <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-5 lg:px-6 py-4 sm:py-5">
+
+          {error && (
+            <div
+              className="
+                mb-3
+                rounded-[6px]
+                border
+                border-[#ffc9c9]
+                bg-[#fff4f4]
+                px-3
+                py-2
+                text-[9px]
+                text-[#ff4b4b]
+              "
+            >
+              {error}
+            </div>
+          )}
+
+          {/* =========================================================
+              COVERAGE SUMMARY
+          ========================================================= */}
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+
+            {/* Total Test Cases */}
+
+            <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm min-w-0">
+
+              <div className="text-[9px] sm:text-[10px] font-medium tracking-[0.08em] text-slate-400 uppercase">
+                Total Test Cases
+              </div>
+
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-emerald-500">
+                {loading
+                  ? "..."
+                  : total}
+              </div>
+
+            </div>
+
+            {/* Executed */}
+
+            <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm min-w-0">
+
+              <div className="text-[9px] sm:text-[10px] font-medium tracking-[0.08em] text-slate-400 uppercase">
+                Executed
+              </div>
+
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-green-600">
+                {loading
+                  ? "..."
+                  : executed}
+              </div>
+
+            </div>
+
+            {/* Passed */}
+
+            <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm min-w-0">
+
+              <div className="text-[9px] sm:text-[10px] font-medium tracking-[0.08em] text-slate-400 uppercase">
+                Passed
+              </div>
+
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-green-600">
+                {loading
+                  ? "..."
+                  : passed}
+              </div>
+
+            </div>
+
+            {/* Failed / Blocked */}
+
+            <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm min-w-0">
+
+              <div className="text-[9px] sm:text-[10px] font-medium tracking-[0.08em] text-slate-400 uppercase">
+                Failed / Blocked
+              </div>
+
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-red-500">
+                {loading
+                  ? "..."
+                  : failedBlocked}
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* =========================================================
+              COVERAGE BY MODULE
+          ========================================================= */}
+
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 sm:p-5">
+
+            <div className="mb-4">
+
+              <h2 className="text-sm sm:text-[15px] font-semibold text-slate-900">
+                Coverage by Module
+              </h2>
+
+            </div>
+
+            <div className="space-y-4">
+
+              {coverageData.map(
+                (item) => (
+                  <div
+                    key={
+                      item.name
+                    }
+                    className="w-full"
+                  >
+
+                    <div className="flex items-center justify-between gap-3 mb-1.5">
+
+                      <div className="flex items-center min-w-0 flex-1">
+
+                        <span className="text-[11px] sm:text-xs font-medium text-slate-700 truncate">
+                          {item.name}
+                        </span>
+
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+
+                        <span className="text-[9px] sm:text-[10px] text-slate-400">
+                          {item.cases}{" "}
+                          {item.cases === 1
+                            ? "case"
+                            : "cases"}
+                        </span>
+
+                        <span
+                          className={`text-[10px] sm:text-[11px] font-semibold ${getTextColor(
+                            item.percentage
+                          )}`}
+                        >
+                          {item.percentage}%
+                        </span>
+
+                      </div>
+
+                    </div>
+
+                    <div className="w-full h-[5px] sm:h-[6px] bg-slate-100 rounded-full overflow-hidden">
+
+                      <div
+                        className={`h-full rounded-full ${getBarColor(
+                          item.percentage
+                        )}`}
+                        style={{
+                          width:
+                            `${Math.min(
+                              100,
+                              Math.max(
+                                0,
+                                item.percentage
+                              )
+                            )}%`,
+                        }}
+                      />
+
+                    </div>
+
+                  </div>
+                )
+              )}
+
+              {!loading &&
+                coverageData.length ===
+                  0 && (
+
+                  <div className="py-8 text-center text-[10px] text-slate-400">
+                    No test coverage data available.
+                  </div>
+
+                )}
+
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    );
+  };
 
 export default QATestCoverage;

@@ -9,14 +9,14 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ onOpenDemo, onOpenLogin }) => {
   return (
     <header className="fixed top-6 left-0 right-0 z-50 flex justify-center px-4">
-      <nav className="flex items-center justify-between w-full max-w-[1080px] bg-white/80 backdrop-blur-xl border border-white/90 shadow-xl shadow-rose-950/5 rounded-full py-2.5 pl-5 pr-3 transition-all duration-300">
+      <nav className="flex min-w-0 items-center justify-between w-full max-w-[1080px] bg-white/80 backdrop-blur-xl border border-white/90 shadow-xl shadow-rose-950/5 rounded-full py-2.5 pl-3 pr-2 sm:pl-5 sm:pr-3 transition-all duration-300">
         {/* Brand Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/25">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2.5">
+          <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/25">
             <LayoutGrid size={20} />
           </div>
-          <span className="font-extrabold text-xl tracking-tight text-slate-900">Flowpilot</span>
-          <span className="bg-emerald-50 text-emerald-600 border border-emerald-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest">
+          <span className="truncate font-extrabold text-lg sm:text-xl tracking-tight text-slate-900">Flowpilot</span>
+          <span className="hidden sm:inline bg-emerald-50 text-emerald-600 border border-emerald-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest">
             V2.0
           </span>
         </div>
@@ -31,19 +31,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenDemo, onOpenLogin }) => {
         </ul>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-3">
           <button 
             onClick={onOpenLogin || onOpenDemo}
-            className="text-slate-700 font-bold text-sm px-4 py-2 hover:text-slate-900 transition-colors cursor-pointer"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] sm:text-sm px-6 sm:px-8 py-2.5 rounded-full shadow-lg shadow-emerald-500/30 hover:-translate-y-0.5 transition-all whitespace-nowrap"
           >
-            Login
+            Login <ArrowRight size={14} className="sm:h-4 sm:w-4" />
           </button>
-          <a 
-            href="#trial" 
-            className="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm px-4 sm:px-5 py-2.5 rounded-full shadow-lg shadow-emerald-500/30 hover:-translate-y-0.5 transition-all text-decoration-none"
-          >
-            Get Started <ArrowRight size={16} />
-          </a>
         </div>
       </nav>
     </header>

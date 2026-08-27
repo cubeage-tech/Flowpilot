@@ -81,3 +81,93 @@ export const STATUS = {
 } as const;
 
 export type StatusKey = keyof typeof STATUS;
+
+/**
+ * Board column tones. Colour encodes flow stage, so a reader can scan the
+ * board by hue: grey is not started, amber is in flight, violet and teal are
+ * verification, green is finished, red is stopped.
+ */
+export const COLUMN_TONE = {
+  BACKLOG: 'idle',
+  SPRINT_READY: 'idle',
+  TODO: 'idle',
+  IN_PROGRESS: 'active',
+  CODE_REVIEW: 'plan',
+  TESTING: 'test',
+  DONE: 'done',
+  BLOCKED: 'blocked'
+} as const;
+
+/**
+ * Priority badges. Deliberately monochrome-with-accent rather than a rainbow:
+ * only the top two priorities take a warm colour, so "everything is urgent"
+ * cannot happen visually. Ordered highest first for sorting.
+ */
+export const PRIORITY_STYLE = {
+  HIGHEST: { chip: 'bg-rose-500/12 text-rose-700 border-rose-500/25',   text: 'text-rose-600',   rank: 0, mark: '↑↑' },
+  HIGH:    { chip: 'bg-amber-500/12 text-amber-700 border-amber-500/25', text: 'text-amber-600',  rank: 1, mark: '↑'  },
+  MEDIUM:  { chip: 'bg-slate-100 text-slate-600 border-slate-200',       text: 'text-slate-400',  rank: 2, mark: '='  },
+  LOW:     { chip: 'bg-slate-50 text-slate-500 border-slate-200',        text: 'text-slate-300',  rank: 3, mark: '↓'  },
+  LOWEST:  { chip: 'bg-slate-50 text-slate-400 border-slate-200',        text: 'text-slate-300',  rank: 4, mark: '↓↓' }
+} as const;
+
+/**
+ * Colour labels (SRS Module 5).
+ *
+ * A label's colour is derived from its own text, so "backend" is the same hue
+ * on every card and across every sprint without anyone configuring it. The
+ * palette is deliberately muted: status colour has to stay the loudest thing
+ * on the board, and a rainbow of labels would drown it.
+ */
+const LABEL_PALETTE = [
+  'bg-sky-50 text-sky-700 border-sky-200',
+  'bg-violet-50 text-violet-700 border-violet-200',
+  'bg-amber-50 text-amber-700 border-amber-200',
+  'bg-teal-50 text-teal-700 border-teal-200',
+  'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200',
+  'bg-lime-50 text-lime-700 border-lime-200',
+  'bg-cyan-50 text-cyan-700 border-cyan-200',
+  'bg-rose-50 text-rose-700 border-rose-200'
+] as const;
+
+/** Neutral base every label chip shares. */
+export const LABEL_CHIP = 'border rounded px-1.5 py-0.5';
+
+/** Stable colour for a label, from a small case-insensitive string hash. */
+export const labelColour = (label: string): string => {
+  let hash = 0;
+
+  for (let i = 0; i < label.length; i++) {
+    // Same shape as Java's String.hashCode, kept simple and deterministic
+    hash = (hash * 31 + label.toLowerCase().charCodeAt(i)) | 0;
+  }
+
+  return LABEL_PALETTE[Math.abs(hash) % LABEL_PALETTE.length];
+};
+
+/** Full class string for a label chip, colour included. */
+export const labelChip = (label: string): string => `${LABEL_CHIP} ${labelColour(label)}`;
+
+/** Shared form control styling, so every Scrum Master form matches. */
+export const FIELD = {
+  input:
+    'w-full px-3 py-2 rounded-lg bg-white border border-slate-200 text-slate-900 ' +
+    'placeholder:text-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 ' +
+    'focus-visible:outline-emerald-500',
+  select:
+    'px-2 py-1.5 rounded-lg cursor-pointer bg-slate-50 border border-slate-200 ' +
+    'text-slate-600 hover:border-slate-300 focus-visible:outline-2 ' +
+    'focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-wait',
+  button:
+    'font-semibold inline-flex items-center gap-1.5 px-3 py-2 rounded-lg cursor-pointer ' +
+    'transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ' +
+    'disabled:opacity-50 disabled:cursor-wait',
+  primary:
+    'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:outline-emerald-500',
+  secondary:
+    'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 ' +
+    'focus-visible:outline-emerald-500',
+  danger:
+    'bg-rose-500/10 text-rose-700 border border-rose-500/20 hover:bg-rose-500/15 ' +
+    'focus-visible:outline-rose-500'
+} as const;

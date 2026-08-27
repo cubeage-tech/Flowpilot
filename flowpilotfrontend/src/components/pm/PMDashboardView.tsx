@@ -3,7 +3,7 @@ import React from 'react';
 export const PMDashboardView: React.FC = () => {
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
           <div className="text-[12px] font-bold tracking-wider text-slate-500 uppercase mb-3">MY PROJECTS</div>
           <div className="text-2xl font-bold font-black text-slate-900 leading-none mb-2">4</div>
@@ -29,13 +29,13 @@ export const PMDashboardView: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6">
         <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-2xs">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-slate-900">Sprint 12 Progress</h3>
             <span className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[10px] font-bold px-2 py-1 rounded-full uppercase">On Track</span>
           </div>
-          <div className="relative pt-2 pb-1">
+          <div className="relative pt-1 pb-1">
             <svg viewBox="0 0 150 150" className="w-40 h-44 overflow-visible">
               <line x1="0" y1="20" x2="500" y2="130" stroke="#cbd5e1" strokeDasharray="5 5" strokeWidth="2" />
               <line x1="320" y1="0" x2="320" y2="150" stroke="#afa6b7" strokeDasharray="3 3" strokeWidth="1.5" />

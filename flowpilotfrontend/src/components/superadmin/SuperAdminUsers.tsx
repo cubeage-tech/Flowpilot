@@ -1,7 +1,72 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Pencil,
+  Plus,
+  X,
+  Power,
+  Trash2,
+  Search,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
+
+// ============================================================
+// API
+// ============================================================
+
+const API_BASE_URL = "http://localhost:8080";
+
+const USERS_API = `${API_BASE_URL}/api/superadmin/users`;
+
+// ============================================================
+// OPTIONS
+// ============================================================
+
+const ROLE_OPTIONS = [
+  "Super Admin",
+  "Admin",
+  "Project Manager",
+  "Scrum Master",
+  "Developer",
+  "QA Engineer",
+  "Viewer",
+];
+
+const DEPARTMENT_OPTIONS = [
+  "Leadership",
+  "Operations",
+  "Product",
+  "Engineering",
+  "Quality",
+  "Design",
+  "Management",
+  "Human Resources",
+  "Finance",
+  "Marketing",
+];
+
+const DESIGNATION_OPTIONS = [
+  "Chief Executive Officer",
+  "Administrator",
+  "Project Manager",
+  "Scrum Master",
+  "Software Developer",
+  "QA Engineer",
+  "UI/UX Designer",
+  "Business Analyst",
+  "Team Lead",
+  "HR Manager",
+  "Finance Manager",
+  "Marketing Manager",
+  "Viewer",
+];
+
+// ============================================================
+// TYPES
+// ============================================================
 
 interface SuperAdminUser {
-  employeeId: string;
+  employeeId: number;
   name: string;
   email: string;
   role: string;
@@ -14,7 +79,6 @@ interface SuperAdminUser {
 }
 
 interface UserForm {
-  employeeId: string;
   name: string;
   email: string;
   role: string;
@@ -23,18 +87,31 @@ interface UserForm {
   password: string;
 }
 
-const API_BASE_URL = "http://localhost:8080";
+type ToastType = "success" | "error";
 
+interface Toast {
+  id: number;
+  type: ToastType;
+  message: string;
+}
 
-const USERS_API = `${API_BASE_URL}/api/superadmin/users`;
+// ============================================================
+// EMPTY FORM
+// ============================================================
 
-/*
- * JWT AUTHENTICATION
- *
- * Your login page should save the JWT in localStorage.
- * The fallback keys make this work if your login currently uses
- * token, jwt, or accessToken.
- */
+const EMPTY_FORM: UserForm = {
+  name: "",
+  email: "",
+  role: "",
+  department: "",
+  designation: "",
+  password: "",
+};
+
+// ============================================================
+// AUTH
+// ============================================================
+
 const getToken = (): string | null => {
   return (
     localStorage.getItem("token") ||
@@ -48,6 +125,7 @@ const getAuthHeaders = (): HeadersInit => {
 
   return {
     "Content-Type": "application/json",
+
     ...(token
       ? {
           Authorization: `Bearer ${token}`,
@@ -56,120 +134,455 @@ const getAuthHeaders = (): HeadersInit => {
   };
 };
 
-const roles = [
-  "Super Admin",
-  "Admin",
-  "Project Manager",
-  "Scrum Master",
-  "Developer",
-  "QA Engineer",
-  "Viewer",
-  "Business Analyst",
-];
+// ============================================================
+// EMPLOYEE ID
+// ============================================================
 
-const departments = [
-  "Leadership",
-  "Operations",
-  "Product",
-  "Engineering",
-  "Quality",
-  "Management",
-  "Design",
-];
-
-const designations = [
-  "Director",
-  "Administrator",
-  "Project Manager",
-  "Scrum Master",
-  "Software Developer",
-  "QA Engineer",
-  "Business Analyst",
-  "Viewer",
-];
-
-const emptyForm: UserForm = {
-  employeeId: "",
-  name: "",
-  email: "",
-  role: "",
-  department: "",
-  designation: "",
-  password: "",
+const formatEmployeeId = (employeeId: number): string => {
+  return `EMP-${String(employeeId).padStart(3, "0")}`;
 };
 
+// ============================================================
+// INITIALS
+// ============================================================
+
+const getInitials = (name: string): string => {
+  if (!name || !name.trim()) {
+    return "";
+  }
+
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.charAt(0))
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+};
+
+// ============================================================
+// NORMALIZE USER
+// ============================================================
+
+const normalizeUser = (user: any): SuperAdminUser => {
+  return {
+    employeeId: Number(user.employeeId),
+
+    name: user.name ?? "",
+
+    email: user.email ?? "",
+
+    role: user.role ?? "",
+
+    department: user.department ?? "",
+
+    designation: user.designation ?? "",
+
+    password: undefined,
+
+    status:
+      String(user.status).toUpperCase() === "ACTIVE"
+        ? "Active"
+        : "Inactive",
+
+    lastLogin: user.lastLogin ?? "Never",
+
+    initials:
+      user.initials ||
+      getInitials(user.name ?? ""),
+  };
+};
+
+// ============================================================
+// LAST LOGIN
+// ============================================================
+
+const formatLastLogin = (value: string): string => {
+  if (
+    !value ||
+    value.toLowerCase() === "never"
+  ) {
+    return "Never";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+// ============================================================
+// EMAIL VALIDATION
+// ============================================================
+
+const validateEmail = (email: string): string => {
+  if (!email.trim()) {
+    return "Email address is required.";
+  }
+
+  const emailRegex =
+    /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+  if (!emailRegex.test(email.trim())) {
+    return "Please enter a valid email address.";
+  }
+
+  return "";
+};
+
+// ============================================================
+// PASSWORD VALIDATION
+// ============================================================
+
+const validatePassword = (
+  password: string,
+  isEditing: boolean
+): string => {
+  // During editing, blank password means
+  // keep the existing password.
+  if (
+    isEditing &&
+    !password
+  ) {
+    return "";
+  }
+
+  if (!password) {
+    return "Password is required.";
+  }
+
+  if (password.length < 8) {
+    return "Password must be at least 8 characters.";
+  }
+
+  if (!/[A-Za-z]/.test(password)) {
+    return "Password must contain at least one letter.";
+  }
+
+  if (!/[0-9]/.test(password)) {
+    return "Password must contain at least one number.";
+  }
+
+  if (
+    !/[!@#$%^&*(),.?":{}|<>_\-\\[\]/;'`~+=]/.test(
+      password
+    )
+  ) {
+    return "Password must contain at least one special character.";
+  }
+
+  return "";
+};
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
 const SuperAdminUsers: React.FC = () => {
-  const [users, setUsers] = useState<SuperAdminUser[]>([]);
-  const [form, setForm] = useState<UserForm>(emptyForm);
+  // ==========================================================
+  // STATE
+  // ==========================================================
 
-  const [showForm, setShowForm] = useState(false);
-  const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(
-    null
-  );
+  const [users, setUsers] =
+    useState<SuperAdminUser[]>([]);
 
-  const [search, setSearch] = useState("");
+  const [form, setForm] =
+    useState<UserForm>(EMPTY_FORM);
 
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm] =
+    useState(false);
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [
+    editingEmployeeId,
+    setEditingEmployeeId,
+  ] = useState<number | null>(null);
 
-  /*
-   * ============================================================
-   * LOAD USERS
-   * GET /api/superadmin/users
-   * ============================================================
-   */
+  const [loading, setLoading] =
+    useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  // ==========================================================
+  // GLOBAL HEADER SEARCH VALUE
+  // ==========================================================
+
+  const [globalSearch, setGlobalSearch] =
+    useState("");
+
+  // ==========================================================
+  // INLINE FIELD ERRORS
+  // ==========================================================
+
+  const [emailError, setEmailError] =
+    useState("");
+
+  const [passwordError, setPasswordError] =
+    useState("");
+
+  // ==========================================================
+  // FLOATING TOAST
+  // ==========================================================
+
+  const [toast, setToast] =
+    useState<Toast | null>(null);
+
+  // ==========================================================
+  // SHOW TOAST
+  // ==========================================================
+
+  const showToast = (
+    type: ToastType,
+    message: string
+  ) => {
+    const id = Date.now();
+
+    setToast({
+      id,
+      type,
+      message,
+    });
+
+    window.setTimeout(() => {
+      setToast((current) =>
+        current?.id === id
+          ? null
+          : current
+      );
+    }, 3000);
+  };
+
+  // ==========================================================
+  // LOAD USERS
+  // ==========================================================
+
   const loadUsers = async () => {
     try {
       setLoading(true);
-      setError("");
 
-      const response = await fetch(USERS_API, {
-        method: "GET",
-        headers: getAuthHeaders(),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error("Unauthorized. Please login again.");
+      const response = await fetch(
+        USERS_API,
+        {
+          method: "GET",
+          headers: getAuthHeaders(),
         }
-        throw new Error(`Failed to load users (${response.status})`);
+      );
+
+      const responseText =
+        await response.text();
+
+      let data: any = null;
+
+      try {
+        data = responseText
+          ? JSON.parse(responseText)
+          : null;
+      } catch {
+        data = null;
       }
 
-      const data: SuperAdminUser[] = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            responseText ||
+            `Failed to load users (${response.status}).`
+        );
+      }
 
-      setUsers(data);
+      const normalizedUsers:
+        SuperAdminUser[] =
+        Array.isArray(data)
+          ? data.map(normalizeUser)
+          : [];
+
+      setUsers(normalizedUsers);
     } catch (err) {
-      console.error("Load users error:", err);
+      console.error(
+        "Load users error:",
+        err
+      );
 
-      setError(
+      showToast(
+        "error",
         err instanceof Error
           ? err.message
-          : "Unable to connect to backend."
+          : "Unable to load users."
       );
     } finally {
       setLoading(false);
     }
   };
 
-  /*
-   * Load users when page opens
-   */
+  // ==========================================================
+  // INITIAL LOAD
+  // ==========================================================
+
   useEffect(() => {
     loadUsers();
   }, []);
 
-  /*
-   * ============================================================
-   * FORM INPUT
-   * ============================================================
-   */
+  // ==========================================================
+  // GLOBAL HEADER SEARCH
+  // ==========================================================
+  // DashboardLayout is a common/mentor-controlled file and is
+  // intentionally NOT modified. The existing header search input
+  // is detected directly from this page.
+  //
+  // Only the input whose placeholder is exactly "Search..." is
+  // treated as the global header search. Form inputs are ignored.
+
+  useEffect(() => {
+    const getHeaderSearchInput = (): HTMLInputElement | null => {
+      const inputs = Array.from(
+        document.querySelectorAll<HTMLInputElement>(
+          'input[placeholder="Search..."]'
+        )
+      );
+
+      return inputs.length > 0 ? inputs[0] : null;
+    };
+
+    const handleGlobalSearchInput = (event: Event) => {
+      const target = event.target as HTMLInputElement | null;
+
+      if (!target) {
+        return;
+      }
+
+      if (
+        target.tagName === "INPUT" &&
+        target.getAttribute("placeholder") === "Search..."
+      ) {
+        setGlobalSearch(target.value);
+      }
+    };
+
+    const headerSearchInput = getHeaderSearchInput();
+
+    if (headerSearchInput) {
+      setGlobalSearch(headerSearchInput.value);
+    }
+
+    document.addEventListener(
+      "input",
+      handleGlobalSearchInput,
+      true
+    );
+
+    return () => {
+      document.removeEventListener(
+        "input",
+        handleGlobalSearchInput,
+        true
+      );
+    };
+  }, []);
+
+  // ==========================================================
+  // COUNTS
+  // ==========================================================
+
+  const totalUsers =
+    users.length;
+
+  const activeUsers =
+    users.filter(
+      (user) =>
+        user.status === "Active"
+    ).length;
+
+  // ==========================================================
+  // FILTER USERS FROM THE MAIN HEADER SEARCH
+  // ==========================================================
+
+  const filteredUsers = useMemo(() => {
+    const search = globalSearch.trim().toLowerCase();
+
+    if (!search) {
+      return users;
+    }
+
+    return users.filter((user) => {
+      const employeeId = formatEmployeeId(user.employeeId).toLowerCase();
+      const numericEmployeeId = String(user.employeeId).toLowerCase();
+
+      return (
+        employeeId.includes(search) ||
+        numericEmployeeId.includes(search) ||
+        user.name.toLowerCase().includes(search) ||
+        user.email.toLowerCase().includes(search) ||
+        user.role.toLowerCase().includes(search) ||
+        user.department.toLowerCase().includes(search) ||
+        user.designation.toLowerCase().includes(search)
+      );
+    });
+  }, [users, globalSearch]);
+
+  // ==========================================================
+  // INPUT CHANGE
+  // ==========================================================
+
   const handleInputChange = (
-    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const { name, value } = event.target;
+    const {
+      name,
+      value,
+    } = event.target;
+
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+
+    // --------------------------------------------------------
+    // EMAIL LIVE VALIDATION
+    // --------------------------------------------------------
+
+    if (name === "email") {
+      if (!value.trim()) {
+        setEmailError("");
+      } else {
+        setEmailError(
+          validateEmail(value)
+        );
+      }
+    }
+
+    // --------------------------------------------------------
+    // PASSWORD LIVE VALIDATION
+    // --------------------------------------------------------
+
+    if (name === "password") {
+      setPasswordError(
+        validatePassword(
+          value,
+          editingEmployeeId !== null
+        )
+      );
+    }
+  };
+
+  // ==========================================================
+  // SELECT CHANGE
+  // ==========================================================
+
+  const handleSelectChange = (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const {
+      name,
+      value,
+    } = event.target;
 
     setForm((previous) => ({
       ...previous,
@@ -177,94 +590,134 @@ const SuperAdminUsers: React.FC = () => {
     }));
   };
 
-  /*
-   * ============================================================
-   * OPEN ADD FORM
-   * ============================================================
-   */
+  // ==========================================================
+  // ADD USER
+  // ==========================================================
+
   const handleAddUser = () => {
-    setForm(emptyForm);
+    setForm(EMPTY_FORM);
+
     setEditingEmployeeId(null);
-    setError("");
-    setSuccess("");
+
+    setEmailError("");
+
+    setPasswordError("");
+
     setShowForm(true);
   };
 
-  /*
-   * ============================================================
-   * CANCEL FORM
-   * ============================================================
-   */
+  // ==========================================================
+  // CANCEL
+  // ==========================================================
+
   const handleCancel = () => {
-    setForm(emptyForm);
+    if (saving) {
+      return;
+    }
+
+    setForm(EMPTY_FORM);
+
     setEditingEmployeeId(null);
+
     setShowForm(false);
-    setError("");
+
+    setEmailError("");
+
+    setPasswordError("");
   };
 
-  /*
-   * ============================================================
-   * CREATE USER
-   * POST /api/superadmin/users
-   * ============================================================
-   */
+  // ==========================================================
+  // CREATE USER
+  // ==========================================================
+
   const createUser = async () => {
     try {
       setSaving(true);
-      setError("");
-      setSuccess("");
 
-      const response = await fetch(USERS_API, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          employeeId: form.employeeId.trim(),
-          name: form.name.trim(),
-          email: form.email.trim(),
-          role: form.role,
-          department: form.department,
-          designation: form.designation,
-          password: form.password,
-        }),
-      });
+      const response = await fetch(
+        USERS_API,
+        {
+          method: "POST",
 
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error("Unauthorized. Please login again.");
+          headers:
+            getAuthHeaders(),
+
+          body: JSON.stringify({
+            name:
+              form.name.trim(),
+
+            email:
+              form.email.trim(),
+
+            role:
+              form.role,
+
+            department:
+              form.department,
+
+            designation:
+              form.designation,
+
+            password:
+              form.password,
+          }),
         }
+      );
 
-        let message = "Failed to create user.";
+      const responseText =
+        await response.text();
 
-        try {
-          const data = await response.json();
+      let data: any = null;
 
-          if (data.message) {
-            message = data.message;
-          } else if (data.error) {
-            message = data.error;
-          }
-        } catch {
-          // Ignore JSON parsing error
-        }
-
-        throw new Error(message);
+      try {
+        data = responseText
+          ? JSON.parse(responseText)
+          : null;
+      } catch {
+        data = null;
       }
 
-      const createdUser: SuperAdminUser = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            responseText ||
+            `Failed to create user (${response.status}).`
+        );
+      }
 
-      /*
-       * Add newly-created user immediately to table.
-       */
-      setUsers((previous) => [...previous, createdUser]);
+      const newUser =
+        normalizeUser(data);
 
-      setSuccess("User created successfully.");
+      setUsers(
+        (previous) => [
+          ...previous,
+          newUser,
+        ]
+      );
 
-      setForm(emptyForm);
+      setForm(EMPTY_FORM);
+
       setShowForm(false);
-    } catch (err) {
-      console.error("Create user error:", err);
 
-      setError(
+      setEmailError("");
+
+      setPasswordError("");
+
+      showToast(
+        "success",
+        `${formatEmployeeId(
+          newUser.employeeId
+        )} created successfully.`
+      );
+    } catch (err) {
+      console.error(
+        "Create user error:",
+        err
+      );
+
+      showToast(
+        "error",
         err instanceof Error
           ? err.message
           : "Unable to create user."
@@ -274,86 +727,113 @@ const SuperAdminUsers: React.FC = () => {
     }
   };
 
-  /*
-   * ============================================================
-   * UPDATE USER
-   * PUT /api/superadmin/users/{employeeId}
-   * ============================================================
-   */
+  // ==========================================================
+  // UPDATE USER
+  // ==========================================================
+
   const updateUser = async () => {
-    if (!editingEmployeeId) {
+    if (
+      editingEmployeeId === null
+    ) {
       return;
     }
 
     try {
       setSaving(true);
-      setError("");
-      setSuccess("");
 
-      const response = await fetch(
-        `${USERS_API}/${encodeURIComponent(editingEmployeeId)}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            employeeId: form.employeeId.trim(),
-            name: form.name.trim(),
-            email: form.email.trim(),
-            role: form.role,
-            department: form.department,
-            designation: form.designation,
+      const response =
+        await fetch(
+          `${USERS_API}/${editingEmployeeId}`,
+          {
+            method: "PUT",
 
-            /*
-             * Backend treats password as optional during update.
-             */
-            password: form.password.trim() || null,
-          }),
-        }
-      );
+            headers:
+              getAuthHeaders(),
 
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error("Unauthorized. Please login again.");
-        }
+            body: JSON.stringify({
+              name:
+                form.name.trim(),
 
-        let message = "Failed to update user.";
+              email:
+                form.email.trim(),
 
-        try {
-          const data = await response.json();
+              role:
+                form.role,
 
-          if (data.message) {
-            message = data.message;
-          } else if (data.error) {
-            message = data.error;
+              department:
+                form.department,
+
+              designation:
+                form.designation,
+
+              password:
+                form.password.trim()
+                  ? form.password.trim()
+                  : null,
+            }),
           }
-        } catch {
-          // Ignore
-        }
+        );
 
-        throw new Error(message);
+      const responseText =
+        await response.text();
+
+      let data: any = null;
+
+      try {
+        data = responseText
+          ? JSON.parse(responseText)
+          : null;
+      } catch {
+        data = null;
       }
 
-      const updatedUser: SuperAdminUser = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            responseText ||
+            `Failed to update user (${response.status}).`
+        );
+      }
 
-      setUsers((previous) =>
-        previous.map((user) =>
-          user.employeeId === editingEmployeeId
-            ? updatedUser
-            : user
-        )
+      const updatedUser =
+        normalizeUser(data);
+
+      setUsers(
+        (previous) =>
+          previous.map(
+            (user) =>
+              user.employeeId ===
+              editingEmployeeId
+                ? updatedUser
+                : user
+          )
       );
 
-      setSuccess("User updated successfully.");
+      setForm(EMPTY_FORM);
 
-      setForm(emptyForm);
       setEditingEmployeeId(null);
-      setShowForm(false);
-    } catch (err) {
-      console.error("Update user error:", err);
 
-      setError(
+      setShowForm(false);
+
+      setEmailError("");
+
+      setPasswordError("");
+
+      showToast(
+        "success",
+        `${formatEmployeeId(
+          updatedUser.employeeId
+        )} updated successfully.`
+      );
+    } catch (err) {
+      console.error(
+        "Update user error:",
+        err
+      );
+
+      showToast(
+        "error",
         err instanceof Error
           ? err.message
           : "Unable to update user."
@@ -363,113 +843,191 @@ const SuperAdminUsers: React.FC = () => {
     }
   };
 
-  /*
-   * ============================================================
-   * CREATE / UPDATE SUBMIT
-   * ============================================================
-   */
+  // ==========================================================
+  // FORM SUBMIT
+  // ==========================================================
+
   const handleSubmit = async (
     event: React.FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault();
 
-    setError("");
-    setSuccess("");
-
-    if (!form.employeeId.trim()) {
-      setError("Employee ID is required.");
-      return;
-    }
+    // --------------------------------------------------------
+    // NAME
+    // --------------------------------------------------------
 
     if (!form.name.trim()) {
-      setError("Full name is required.");
+      showToast(
+        "error",
+        "Full name is required."
+      );
+
       return;
     }
 
-    if (!form.email.trim()) {
-      setError("Email address is required.");
+    // --------------------------------------------------------
+    // EMAIL
+    // --------------------------------------------------------
+
+    const emailValidation =
+      validateEmail(form.email);
+
+    setEmailError(
+      emailValidation
+    );
+
+    if (emailValidation) {
       return;
     }
+
+    // --------------------------------------------------------
+    // ROLE
+    // --------------------------------------------------------
 
     if (!form.role) {
-      setError("Please select a role.");
+      showToast(
+        "error",
+        "Please select a role."
+      );
+
       return;
     }
+
+    // --------------------------------------------------------
+    // DEPARTMENT
+    // --------------------------------------------------------
 
     if (!form.department) {
-      setError("Please select a department.");
+      showToast(
+        "error",
+        "Please select a department."
+      );
+
       return;
     }
+
+    // --------------------------------------------------------
+    // DESIGNATION
+    // --------------------------------------------------------
 
     if (!form.designation) {
-      setError("Please select a designation.");
+      showToast(
+        "error",
+        "Please select a designation."
+      );
+
       return;
     }
 
-    /*
-     * Password is mandatory while creating.
-     */
-    if (!editingEmployeeId && !form.password.trim()) {
-      setError("Password is required.");
+    // --------------------------------------------------------
+    // PASSWORD
+    // --------------------------------------------------------
+
+    const passwordValidation =
+      validatePassword(
+        form.password,
+        editingEmployeeId !== null
+      );
+
+    setPasswordError(
+      passwordValidation
+    );
+
+    if (passwordValidation) {
       return;
     }
 
-    if (!editingEmployeeId && form.password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
+    // --------------------------------------------------------
+    // SAVE
+    // --------------------------------------------------------
 
-    if (editingEmployeeId) {
+    if (
+      editingEmployeeId !== null
+    ) {
       await updateUser();
     } else {
       await createUser();
     }
   };
 
-  /*
-   * ============================================================
-   * EDIT USER
-   * GET /api/superadmin/users/{employeeId}
-   * ============================================================
-   */
-  const handleEdit = async (employeeId: string) => {
+  // ==========================================================
+  // EDIT USER
+  // ==========================================================
+
+  const handleEdit = async (
+    employeeId: number
+  ) => {
     try {
-      setError("");
-      setSuccess("");
+      const response =
+        await fetch(
+          `${USERS_API}/${employeeId}`,
+          {
+            method: "GET",
+            headers:
+              getAuthHeaders(),
+          }
+        );
 
-      const response = await fetch(
-        `${USERS_API}/${encodeURIComponent(employeeId)}`,
-        {
-          method: "GET",
-          headers: getAuthHeaders(),
-        }
-      );
+      const responseText =
+        await response.text();
 
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error("Unauthorized. Please login again.");
-        }
-        throw new Error("Unable to load user details.");
+      let data: any = null;
+
+      try {
+        data = responseText
+          ? JSON.parse(responseText)
+          : null;
+      } catch {
+        data = null;
       }
 
-      const user: SuperAdminUser = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            responseText ||
+            "Unable to load user details."
+        );
+      }
 
       setForm({
-        employeeId: user.employeeId,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department,
-        designation: user.designation,
+        name:
+          data.name || "",
+
+        email:
+          data.email || "",
+
+        role:
+          data.role || "",
+
+        department:
+          data.department || "",
+
+        designation:
+          data.designation || "",
+
         password: "",
       });
 
-      setEditingEmployeeId(user.employeeId);
+      setEditingEmployeeId(
+        Number(
+          data.employeeId
+        )
+      );
+
+      setEmailError("");
+
+      setPasswordError("");
+
       setShowForm(true);
     } catch (err) {
-      console.error("Edit user error:", err);
+      console.error(
+        "Edit user error:",
+        err
+      );
 
-      setError(
+      showToast(
+        "error",
         err instanceof Error
           ? err.message
           : "Unable to load user."
@@ -477,53 +1035,78 @@ const SuperAdminUsers: React.FC = () => {
     }
   };
 
-  /*
-   * ============================================================
-   * ENABLE / DISABLE
-   * PATCH /api/superadmin/users/{employeeId}/status
-   * ============================================================
-   */
-  const handleToggleStatus = async (
-    employeeId: string
+  // ==========================================================
+  // ENABLE / DISABLE USER
+  // ==========================================================
+
+  const handleStatusToggle = async (
+    user: SuperAdminUser
   ) => {
     try {
-      setError("");
-      setSuccess("");
+      const response =
+        await fetch(
+          `${USERS_API}/${user.employeeId}/status`,
+          {
+            method: "PATCH",
+            headers:
+              getAuthHeaders(),
+          }
+        );
 
-      const response = await fetch(
-        `${USERS_API}/${encodeURIComponent(employeeId)}/status`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(),
-        }
-      );
+      const responseText =
+        await response.text();
 
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error("Unauthorized. Please login again.");
-        }
-        throw new Error("Unable to change user status.");
+      let data: any = null;
+
+      try {
+        data = responseText
+          ? JSON.parse(responseText)
+          : null;
+      } catch {
+        data = null;
       }
 
-      const updatedUser: SuperAdminUser = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.error ||
+            responseText ||
+            `Unable to change user status (${response.status}).`
+        );
+      }
 
-      setUsers((previous) =>
-        previous.map((user) =>
-          user.employeeId === employeeId
-            ? updatedUser
-            : user
-        )
+      const updatedUser =
+        normalizeUser(data);
+
+      setUsers(
+        (previous) =>
+          previous.map(
+            (userItem) =>
+              userItem.employeeId ===
+              user.employeeId
+                ? updatedUser
+                : userItem
+          )
       );
 
-      setSuccess(
-        updatedUser.status === "Active"
-          ? "User enabled successfully."
-          : "User disabled successfully."
+      showToast(
+        "success",
+        `${formatEmployeeId(
+          user.employeeId
+        )} ${
+          updatedUser.status === "Active"
+            ? "enabled"
+            : "disabled"
+        } successfully.`
       );
     } catch (err) {
-      console.error("Toggle status error:", err);
+      console.error(
+        "Change user status error:",
+        err
+      );
 
-      setError(
+      showToast(
+        "error",
         err instanceof Error
           ? err.message
           : "Unable to change user status."
@@ -531,51 +1114,88 @@ const SuperAdminUsers: React.FC = () => {
     }
   };
 
-  /*
-   * ============================================================
-   * DELETE USER
-   * DELETE /api/superadmin/users/{employeeId}
-   * ============================================================
-   */
-  const handleDelete = async (employeeId: string) => {
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${employeeId}?`
-    );
+  // ==========================================================
+  // DELETE USER
+  // ==========================================================
+
+  const handleDelete = async (
+    user: SuperAdminUser
+  ) => {
+    const confirmed =
+      window.confirm(
+        `Are you sure you want to permanently delete ${user.name}?`
+      );
 
     if (!confirmed) {
       return;
     }
 
     try {
-      setError("");
-      setSuccess("");
+      const response =
+        await fetch(
+          `${USERS_API}/${user.employeeId}`,
+          {
+            method: "DELETE",
+            headers:
+              getAuthHeaders(),
+          }
+        );
 
-      const response = await fetch(
-        `${USERS_API}/${encodeURIComponent(employeeId)}`,
-        {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        }
-      );
+      const responseText =
+        await response.text();
 
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error("Unauthorized. Please login again.");
+        let message =
+          "Unable to delete user.";
+
+        try {
+          const data =
+            responseText
+              ? JSON.parse(
+                  responseText
+                )
+              : null;
+
+          message =
+            data?.message ||
+            data?.error ||
+            responseText ||
+            message;
+        } catch {
+          if (responseText) {
+            message =
+              responseText;
+          }
         }
-        throw new Error("Unable to delete user.");
+
+        throw new Error(
+          message
+        );
       }
 
-      setUsers((previous) =>
-        previous.filter(
-          (user) => user.employeeId !== employeeId
-        )
+      setUsers(
+        (previous) =>
+          previous.filter(
+            (item) =>
+              item.employeeId !==
+              user.employeeId
+          )
       );
 
-      setSuccess("User deleted successfully.");
+      showToast(
+        "success",
+        `${formatEmployeeId(
+          user.employeeId
+        )} deleted successfully.`
+      );
     } catch (err) {
-      console.error("Delete user error:", err);
+      console.error(
+        "Delete user error:",
+        err
+      );
 
-      setError(
+      showToast(
+        "error",
         err instanceof Error
           ? err.message
           : "Unable to delete user."
@@ -583,784 +1203,1672 @@ const SuperAdminUsers: React.FC = () => {
     }
   };
 
-  /*
-   * ============================================================
-   * SEARCH
-   * ============================================================
-   */
-  const query = search.toLowerCase().trim();
+  // ==========================================================
+  // JSX
+  // ==========================================================
 
-  const filteredUsers = users.filter((user) => {
-    if (!query) {
-      return true;
-    }
-
-    return (
-      user.employeeId.toLowerCase().includes(query) ||
-      user.name.toLowerCase().includes(query) ||
-      user.email.toLowerCase().includes(query) ||
-      user.role.toLowerCase().includes(query) ||
-      user.department.toLowerCase().includes(query) ||
-      user.designation.toLowerCase().includes(query)
-    );
-  });
-
-  const activeUsers = users.filter(
-    (user) => user.status === "Active"
-  ).length;
-
-  /*
-   * ============================================================
-   * COMPONENT
-   * ============================================================
-   */
   return (
-    <div className="super-admin-users-page">
-      <style>{`
-        * {
-          box-sizing: border-box;
-        }
+    <div className="w-full">
 
-        .super-admin-users-page {
-          min-height: 100vh;
-          background: #f5f7fb;
-          color: #14213d;
-          font-family: Inter, Arial, sans-serif;
-        }
+      {/* ======================================================
+          FLOATING TOAST
+      ====================================================== */}
 
-        .users-content {
-          padding: 28px 32px 50px;
-        }
-
-        .users-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 28px;
-          gap: 20px;
-        }
-
-        .users-title {
-          margin: 0;
-          font-size: 28px;
-          font-weight: 800;
-          color: #111827;
-        }
-
-        .users-date {
-          margin-top: 5px;
-          color: #8aa0bf;
-          font-size: 14px;
-        }
-
-        .header-right {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
-
-        .search-box {
-          width: 245px;
-          height: 44px;
-          border: 1px solid #dce4ef;
-          border-radius: 24px;
-          background: white;
-          padding: 0 16px;
-          outline: none;
-          color: #1f2937;
-          font-size: 14px;
-        }
-
-        .search-box:focus {
-          border-color: #ff3040;
-        }
-
-        .top-summary {
-          background: #ffffff;
-          border-radius: 12px;
-          padding: 18px 20px;
-          margin-bottom: 18px;
-          border: 1px solid #e5eaf1;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 20px;
-        }
-
-        .member-count {
-          color: #6480a4;
-          font-size: 15px;
-          font-weight: 600;
-        }
-
-        .add-button {
-          border: none;
-          background: #ff3040;
-          color: white;
-          height: 48px;
-          padding: 0 27px;
-          border-radius: 10px;
-          font-weight: 700;
-          font-size: 14px;
-          cursor: pointer;
-          box-shadow: 0 5px 12px rgba(255, 48, 64, 0.18);
-        }
-
-        .add-button:hover {
-          background: #e92535;
-        }
-
-        .form-card {
-          background: white;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          padding: 28px 30px;
-          margin-bottom: 18px;
-        }
-
-        .form-title {
-          margin: 0 0 22px;
-          font-size: 18px;
-          font-weight: 800;
-          color: #152238;
-        }
-
-        .form-grid {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 18px 14px;
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 7px;
-        }
-
-        .form-group label {
-          font-size: 12px;
-          font-weight: 800;
-          color: #355477;
-          text-transform: uppercase;
-        }
-
-        .form-group input,
-        .form-group select {
-          width: 100%;
-          height: 44px;
-          border: 1px solid #d7e0eb;
-          border-radius: 9px;
-          padding: 0 13px;
-          font-size: 14px;
-          color: #243b5a;
-          background: white;
-          outline: none;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus {
-          border-color: #ff3040;
-        }
-
-        .form-actions {
-          display: flex;
-          gap: 10px;
-          margin-top: 20px;
-        }
-
-        .create-button {
-          height: 44px;
-          border: none;
-          background: #ff3040;
-          color: white;
-          border-radius: 9px;
-          padding: 0 22px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .create-button:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .cancel-button {
-          height: 44px;
-          border: 1px solid #d7e0eb;
-          background: white;
-          color: #516a88;
-          border-radius: 9px;
-          padding: 0 22px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .message {
-          padding: 12px 15px;
-          border-radius: 8px;
-          margin-bottom: 16px;
-          font-size: 14px;
-          font-weight: 600;
-        }
-
-        .error-message {
-          color: #b42318;
-          background: #fff1f0;
-          border: 1px solid #ffd4d1;
-        }
-
-        .success-message {
-          color: #087443;
-          background: #edfff6;
-          border: 1px solid #bcefd5;
-        }
-
-        .table-card {
-          background: white;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          overflow-x: auto;
-        }
-
-        .users-table {
-          width: 100%;
-          border-collapse: collapse;
-          min-width: 1050px;
-        }
-
-        .users-table th {
-          text-align: left;
-          padding: 17px 16px;
-          color: #66809f;
-          font-size: 12px;
-          font-weight: 800;
-          border-bottom: 1px solid #e7edf4;
-          white-space: nowrap;
-        }
-
-        .users-table td {
-          padding: 13px 16px;
-          border-bottom: 1px solid #edf1f5;
-          font-size: 14px;
-          color: #294766;
-          white-space: nowrap;
-        }
-
-        .users-table tr:last-child td {
-          border-bottom: none;
-        }
-
-        .employee-id {
-          color: #6280a5;
-          font-weight: 700;
-        }
-
-        .user-name {
-          display: flex;
-          align-items: center;
-          gap: 11px;
-          color: #101b2e;
-          font-weight: 800;
-        }
-
-        .initials {
-          width: 38px;
-          height: 38px;
-          border-radius: 50%;
-          background: #edf2f7;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #5d7490;
-          font-size: 12px;
-          font-weight: 800;
-        }
-
-        .role-badge {
-          display: inline-flex;
-          padding: 8px 11px;
-          border-radius: 8px;
-          background: #eef1f4;
-          color: #3e5b7b;
-          font-weight: 700;
-          font-size: 12px;
-        }
-
-        .status-badge {
-          display: inline-flex;
-          padding: 7px 13px;
-          border-radius: 8px;
-          font-size: 12px;
-          font-weight: 800;
-        }
-
-        .status-active {
-          background: #dff7ea;
-          color: #00864b;
-        }
-
-        .status-inactive {
-          background: #edf0f3;
-          color: #718096;
-        }
-
-        .actions {
-          display: flex;
-          gap: 8px;
-        }
-
-        .action-button {
-          height: 36px;
-          border-radius: 9px;
-          padding: 0 13px;
-          background: white;
-          font-size: 12px;
-          font-weight: 800;
-          cursor: pointer;
-        }
-
-        .edit-button {
-          color: #00a86b;
-          border: 1px solid #a7ead0;
-        }
-
-        .edit-button:hover {
-          background: #effdf7;
-        }
-
-        .disable-button {
-          color: #e88600;
-          border: 1px solid #ffd69a;
-        }
-
-        .enable-button {
-          color: #00a86b;
-          border: 1px solid #a7ead0;
-        }
-
-        .delete-button {
-          color: #ef4444;
-          border: 1px solid #ffc5c5;
-        }
-
-        .loading {
-          text-align: center;
-          padding: 40px;
-          color: #7185a0;
-        }
-
-        .empty {
-          text-align: center;
-          padding: 40px;
-          color: #7185a0;
-        }
-
-        @media (max-width: 900px) {
-          .users-content {
-            padding: 20px;
-          }
-
-          .users-header {
-            align-items: flex-start;
-            flex-direction: column;
-          }
-
-          .header-right {
-            width: 100%;
-          }
-
-          .search-box {
-            width: 100%;
-          }
-
-          .top-summary {
-            align-items: stretch;
-            flex-direction: column;
-          }
-
-          .add-button {
-            width: 100%;
-          }
-
-          .form-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 500px) {
-          .users-content {
-            padding: 14px;
-          }
-
-          .users-title {
-            font-size: 23px;
-          }
-
-          .form-card {
-            padding: 20px;
-          }
-        }
-      `}</style>
-
-      <main className="users-content">
-        {/* HEADER */}
-        <div className="users-header">
-          <div>
-            <h1 className="users-title">User Management</h1>
-            <div className="users-date">
-              {new Date().toLocaleDateString("en-IN", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </div>
-          </div>
-
-          <div className="header-right">
-            <input
-              className="search-box"
-              type="text"
-              placeholder="Search..."
-              value={search}
-              onChange={(event) =>
-                setSearch(event.target.value)
+      {toast && (
+        <div
+          className="
+            fixed
+            right-6
+            top-6
+            z-[9999]
+            w-[360px]
+            max-w-[calc(100vw-32px)]
+            animate-[toastIn_0.25s_ease-out]
+          "
+        >
+          <div
+            className={`
+              flex
+              items-start
+              gap-3
+              rounded-[12px]
+              border
+              bg-white
+              px-4
+              py-3.5
+              shadow-[0_12px_35px_rgba(15,23,42,0.16)]
+              ${
+                toast.type ===
+                "success"
+                  ? "border-[#c7efd9]"
+                  : "border-[#ffd0d0]"
               }
-            />
+            `}
+          >
+
+            {/* ICON */}
+
+            <div
+              className={`
+                mt-0.5
+                flex
+                h-8
+                w-8
+                shrink-0
+                items-center
+                justify-center
+                rounded-full
+                ${
+                  toast.type ===
+                  "success"
+                    ? "bg-[#e9fbf1] text-[#00a86b]"
+                    : "bg-[#fff0f0] text-[#ef4444]"
+                }
+              `}
+            >
+              {toast.type ===
+              "success" ? (
+                <CheckCircle2
+                  size={17}
+                />
+              ) : (
+                <AlertCircle
+                  size={17}
+                />
+              )}
+            </div>
+
+            {/* MESSAGE */}
+
+            <div className="min-w-0 flex-1">
+
+              <p
+                className={`
+                  text-[12px]
+                  font-extrabold
+                  ${
+                    toast.type ===
+                    "success"
+                      ? "text-[#087443]"
+                      : "text-[#d22f2f]"
+                  }
+                `}
+              >
+                {toast.type ===
+                "success"
+                  ? "Success"
+                  : "Error"}
+              </p>
+
+              <p
+                className="
+                  mt-0.5
+                  break-words
+                  text-[12px]
+                  font-medium
+                  leading-5
+                  text-[#526b87]
+                "
+              >
+                {toast.message}
+              </p>
+
+            </div>
+
+            {/* CLOSE */}
+
+            <button
+              type="button"
+              onClick={() =>
+                setToast(null)
+              }
+              className="
+                shrink-0
+                rounded-md
+                p-1
+                text-[#9aa8b8]
+                transition
+                hover:bg-[#f3f5f8]
+                hover:text-[#526b87]
+              "
+            >
+              <X size={15} />
+            </button>
+
           </div>
         </div>
+      )}
 
-        {/* MESSAGES */}
-        {error && (
-          <div className="message error-message">
-            {error}
-          </div>
-        )}
+      {/* ======================================================
+          MAIN
+      ====================================================== */}
 
-        {success && (
-          <div className="message success-message">
-            {success}
-          </div>
-        )}
+      <main
+        className="
+          px-4
+          pb-10
+          pt-7
+          sm:px-6
+          lg:px-8
+        "
+      >
 
-        {/* SUMMARY */}
-        <div className="top-summary">
-          <div className="member-count">
-            {users.length} total members&nbsp; · &nbsp;
-            {activeUsers} active
+        {/* ====================================================
+            TOP BAR
+        ==================================================== */}
+
+        <div
+          className="
+            mb-5
+            flex
+            flex-col
+            gap-4
+            xl:flex-row
+            xl:items-center
+            xl:justify-between
+          "
+        >
+
+          {/* SUMMARY */}
+
+          <div
+            className="
+              text-[15px]
+              font-medium
+              text-[#7185a0]
+            "
+          >
+            {totalUsers}
+            {" "}
+            total members
+
+            <span className="mx-2">
+              ·
+            </span>
+
+            {activeUsers}
+            {" "}
+            active
+
           </div>
+
+          {/* ADD USER */}
 
           <button
             type="button"
-            className="add-button"
             onClick={handleAddUser}
+            className="
+              inline-flex
+              h-11
+              shrink-0
+              items-center
+              justify-center
+              gap-2
+              rounded-[10px]
+              bg-[#ff3040]
+              px-5
+              text-[14px]
+              font-bold
+              text-white
+              shadow-[0_5px_14px_rgba(255,48,64,0.20)]
+              transition
+              hover:bg-[#ef2838]
+              active:scale-[0.98]
+            "
           >
-            +&nbsp; Add User
+            <Plus
+              size={17}
+              strokeWidth={2.8}
+            />
+            Add User
           </button>
+
         </div>
 
-        {/* ADD / EDIT FORM */}
+        {/* ====================================================
+            ADD / EDIT FORM
+        ==================================================== */}
+
         {showForm && (
-          <div className="form-card">
-            <h2 className="form-title">
-              {editingEmployeeId
-                ? "Edit User"
-                : "Add New User"}
-            </h2>
+          <div
+            className="
+              mb-5
+              rounded-[16px]
+              border
+              border-[#e3e7ed]
+              bg-white
+              p-6
+              shadow-[0_5px_18px_rgba(31,45,61,0.08)]
+            "
+          >
 
-            <form onSubmit={handleSubmit}>
-              <div className="form-grid">
-                {/* EMPLOYEE ID */}
-                <div className="form-group">
-                  <label>Employee ID</label>
+            {/* FORM HEADER */}
 
-                  <input
-                    type="text"
-                    name="employeeId"
-                    value={form.employeeId}
-                    onChange={handleInputChange}
-                    placeholder="Employee ID"
-                    disabled={Boolean(editingEmployeeId)}
-                  />
-                </div>
+            <div
+              className="
+                mb-5
+                flex
+                items-center
+                justify-between
+              "
+            >
 
-                {/* NAME */}
-                <div className="form-group">
-                  <label>Full Name</label>
+              <h2
+                className="
+                  text-[16px]
+                  font-extrabold
+                  text-[#111827]
+                "
+              >
+                {editingEmployeeId !==
+                null
+                  ? "Edit User"
+                  : "Add New User"}
+              </h2>
 
-                  <input
-                    type="text"
-                    name="name"
-                    value={form.name}
-                    onChange={handleInputChange}
-                    placeholder="Full Name"
-                  />
-                </div>
+              <button
+                type="button"
+                onClick={
+                  handleCancel
+                }
+                disabled={saving}
+                className="
+                  flex
+                  h-8
+                  w-8
+                  items-center
+                  justify-center
+                  rounded-lg
+                  text-[#718096]
+                  transition
+                  hover:bg-[#f3f5f8]
+                "
+              >
+                <X size={17} />
+              </button>
 
-                {/* EMAIL */}
-                <div className="form-group">
-                  <label>Email Address</label>
+            </div>
 
-                  <input
-                    type="email"
-                    name="email"
-                    value={form.email}
-                    onChange={handleInputChange}
-                    placeholder="Email Address"
-                  />
-                </div>
+            <form
+              onSubmit={
+                handleSubmit
+              }
+            >
 
-                {/* ROLE */}
-                <div className="form-group">
-                  <label>Role</label>
+              {/* FORM FIELDS */}
 
-                  <select
-                    name="role"
-                    value={form.role}
-                    onChange={handleInputChange}
-                  >
-                    <option value="">
-                      Select Role
-                    </option>
+              <div
+                className="
+                  grid
+                  grid-cols-1
+                  gap-4
+                  md:grid-cols-2
+                  xl:grid-cols-3
+                "
+              >
 
-                    {roles.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <FormInput
+                  label="FULL NAME"
+                  name="name"
+                  value={
+                    form.name
+                  }
+                  onChange={
+                    handleInputChange
+                  }
+                  placeholder="Full Name"
+                />
 
-                {/* DEPARTMENT */}
-                <div className="form-group">
-                  <label>Department</label>
+                <FormInput
+                  label="EMAIL ADDRESS"
+                  name="email"
+                  type="email"
+                  value={
+                    form.email
+                  }
+                  onChange={
+                    handleInputChange
+                  }
+                  placeholder="Email Address"
+                  error={
+                    emailError
+                  }
+                />
 
-                  <select
-                    name="department"
-                    value={form.department}
-                    onChange={handleInputChange}
-                  >
-                    <option value="">
-                      Select Department
-                    </option>
+                <FormSelect
+                  label="ROLE"
+                  name="role"
+                  value={
+                    form.role
+                  }
+                  onChange={
+                    handleSelectChange
+                  }
+                  placeholder="Select Role"
+                  options={
+                    ROLE_OPTIONS
+                  }
+                />
 
-                    {departments.map((department) => (
-                      <option
-                        key={department}
-                        value={department}
-                      >
-                        {department}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <FormSelect
+                  label="DEPARTMENT"
+                  name="department"
+                  value={
+                    form.department
+                  }
+                  onChange={
+                    handleSelectChange
+                  }
+                  placeholder="Select Department"
+                  options={
+                    DEPARTMENT_OPTIONS
+                  }
+                />
 
-                {/* DESIGNATION */}
-                <div className="form-group">
-                  <label>Designation</label>
+                <FormSelect
+                  label="DESIGNATION"
+                  name="designation"
+                  value={
+                    form.designation
+                  }
+                  onChange={
+                    handleSelectChange
+                  }
+                  placeholder="Select Designation"
+                  options={
+                    DESIGNATION_OPTIONS
+                  }
+                />
 
-                  <select
-                    name="designation"
-                    value={form.designation}
-                    onChange={handleInputChange}
-                  >
-                    <option value="">
-                      Select Designation
-                    </option>
+                <FormInput
+                  label="PASSWORD"
+                  name="password"
+                  type="password"
+                  value={
+                    form.password
+                  }
+                  onChange={
+                    handleInputChange
+                  }
+                  placeholder={
+                    editingEmployeeId !==
+                    null
+                      ? "Leave blank to keep current"
+                      : "Password"
+                  }
+                  error={
+                    passwordError
+                  }
+                />
 
-                    {designations.map((designation) => (
-                      <option
-                        key={designation}
-                        value={designation}
-                      >
-                        {designation}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* PASSWORD */}
-                <div className="form-group">
-                  <label>Password</label>
-
-                  <input
-                    type="password"
-                    name="password"
-                    value={form.password}
-                    onChange={handleInputChange}
-                    placeholder={
-                      editingEmployeeId
-                        ? "Leave blank to keep current password"
-                        : "Password"
-                    }
-                  />
-                </div>
               </div>
 
-              <div className="form-actions">
+              {/* FORM BUTTONS */}
+
+              <div
+                className="
+                  mt-5
+                  flex
+                  items-center
+                  gap-3
+                "
+              >
+
                 <button
                   type="submit"
-                  className="create-button"
                   disabled={saving}
+                  className="
+                    inline-flex
+                    h-11
+                    items-center
+                    justify-center
+                    rounded-[9px]
+                    bg-[#ff3040]
+                    px-6
+                    text-[14px]
+                    font-bold
+                    text-white
+                    shadow-[0_4px_10px_rgba(255,48,64,0.18)]
+                    transition
+                    hover:bg-[#ef2838]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-60
+                  "
                 >
                   {saving
                     ? "Saving..."
-                    : editingEmployeeId
+                    : editingEmployeeId !==
+                      null
                     ? "Update User"
                     : "Create User"}
                 </button>
 
                 <button
                   type="button"
-                  className="cancel-button"
-                  onClick={handleCancel}
+                  onClick={
+                    handleCancel
+                  }
                   disabled={saving}
+                  className="
+                    h-11
+                    rounded-[9px]
+                    border
+                    border-[#d7dce3]
+                    bg-[#f7f8fa]
+                    px-6
+                    text-[14px]
+                    font-semibold
+                    text-[#44546a]
+                    transition
+                    hover:bg-[#eef0f3]
+                  "
                 >
                   Cancel
                 </button>
+
               </div>
+
             </form>
+
           </div>
         )}
 
-        {/* USERS TABLE */}
-        <div className="table-card">
+        {/* ====================================================
+            USERS TABLE
+        ==================================================== */}
+
+        <div
+          className="
+            w-full
+            overflow-hidden
+            rounded-[16px]
+            border
+            border-[#e2e7ed]
+            bg-white
+          "
+        >
+
+          {/* LOADING */}
+
           {loading ? (
-            <div className="loading">
+            <div
+              className="
+                flex
+                h-[400px]
+                items-center
+                justify-center
+                text-[14px]
+                text-[#7185a0]
+              "
+            >
               Loading users...
             </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="empty">
-              {search
-                ? "No users found for your search."
-                : "No users available."}
+
+          ) : users.length === 0 ? (
+
+            <div
+              className="
+                flex
+                h-[400px]
+                items-center
+                justify-center
+                text-[14px]
+                text-[#7185a0]
+              "
+            >
+              No users found.
             </div>
+
+          ) : filteredUsers.length === 0 ? (
+
+            <div
+              className="
+                flex
+                h-[300px]
+                flex-col
+                items-center
+                justify-center
+                gap-3
+                text-center
+              "
+            >
+
+              <div
+                className="
+                  flex
+                  h-12
+                  w-12
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-[#f3f5f8]
+                  text-[#91a0b2]
+                "
+              >
+                <Search
+                  size={22}
+                />
+              </div>
+
+              <p
+                className="
+                  text-[14px]
+                  font-semibold
+                  text-[#526b87]
+                "
+              >
+                No users match your search.
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setGlobalSearch("")
+                }
+                className="
+                  text-[12px]
+                  font-semibold
+                  text-[#ff3040]
+                  hover:underline
+                "
+              >
+                Clear search
+              </button>
+
+            </div>
+
           ) : (
-            <table className="users-table">
-              <thead>
-                <tr>
-                  <th>EMPLOYEE ID</th>
-                  <th>NAME</th>
-                  <th>EMAIL</th>
-                  <th>ROLE</th>
-                  <th>DEPARTMENT</th>
-                  <th>STATUS</th>
-                  <th>LAST LOGIN</th>
-                  <th>ACTIONS</th>
-                </tr>
-              </thead>
 
-              <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.employeeId}>
-                    {/* EMPLOYEE ID */}
-                    <td>
-                      <span className="employee-id">
-                        {user.employeeId}
-                      </span>
-                    </td>
+            <>
 
-                    {/* NAME */}
-                    <td>
-                      <div className="user-name">
-                        <div className="initials">
+            {/* DESKTOP TABLE */}
+
+            <div
+              className="
+                hidden
+                w-full
+                overflow-x-auto
+                md:block
+              "
+            >
+
+              <table
+                className="
+                  w-full
+                  min-w-[1100px]
+                  border-collapse
+                "
+              >
+
+                <colgroup>
+                  <col className="w-[10%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[17%]" />
+                  <col className="w-[13%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[14%]" />
+                </colgroup>
+
+                {/* HEADER */}
+
+                <thead>
+                  <tr
+                    className="
+                      border-b
+                      border-[#edf0f4]
+                    "
+                  >
+
+                    <TableHeader>
+                      EMPLOYEE ID
+                    </TableHeader>
+
+                    <TableHeader>
+                      NAME
+                    </TableHeader>
+
+                    <TableHeader>
+                      EMAIL
+                    </TableHeader>
+
+                    <TableHeader>
+                      ROLE
+                    </TableHeader>
+
+                    <TableHeader>
+                      DEPARTMENT
+                    </TableHeader>
+
+                    <TableHeader>
+                      STATUS
+                    </TableHeader>
+
+                    <TableHeader>
+                      LAST LOGIN
+                    </TableHeader>
+
+                    <TableHeader>
+                      ACTIONS
+                    </TableHeader>
+
+                  </tr>
+                </thead>
+
+                {/* BODY */}
+
+                <tbody>
+
+                  {filteredUsers.map(
+                    (user) => (
+                      <tr
+                        key={
+                          user.employeeId
+                        }
+                        className="
+                          border-b
+                          border-[#edf1f5]
+                          last:border-b-0
+                          transition
+                          hover:bg-[#fcfdfe]
+                        "
+                      >
+
+                        {/* EMPLOYEE ID */}
+
+                        <TableCell>
+                          <span
+                            className="
+                              text-[13px]
+                              font-medium
+                              text-[#66809f]
+                            "
+                          >
+                            {formatEmployeeId(
+                              user.employeeId
+                            )}
+                          </span>
+                        </TableCell>
+
+                        {/* NAME */}
+
+                        <TableCell>
+                          <div
+                            className="
+                              flex
+                              items-center
+                            "
+                          >
+
+                            <span
+                              className="
+                                truncate
+                                text-[14px]
+                               font-semibold
+                               text-[#111827]
+                              "
+                            >
+                              {user.name}
+                            </span>
+
+                          </div>
+                        </TableCell>
+
+                        {/* EMAIL */}
+
+                        <TableCell>
+                          <span
+                            className="
+                              block
+                              truncate
+                              text-[13px]
+                              text-[#294766]
+                            "
+                          >
+                            {user.email}
+                          </span>
+                        </TableCell>
+
+                        {/* ROLE */}
+
+                        <TableCell>
+                          <span
+                            className="
+                              inline-flex
+                              max-w-full
+                              truncate
+                              rounded-[7px]
+                              bg-[#f0f2f5]
+                              px-2.5
+                              py-1
+                              text-[11px]
+                              font-bold
+                              text-[#405a77]
+                            "
+                          >
+                            {user.role}
+                          </span>
+                        </TableCell>
+
+                        {/* DEPARTMENT */}
+
+                        <TableCell>
+                          <span
+                            className="
+                              text-[13px]
+                              text-[#294766]
+                            "
+                          >
+                            {user.department}
+                          </span>
+                        </TableCell>
+
+                        {/* STATUS */}
+
+                        <TableCell>
+                          {user.status ===
+                          "Active" ? (
+
+                            <span
+                              className="
+                                inline-flex
+                                rounded-[7px]
+                                bg-[#dff7ea]
+                                px-2.5
+                                py-1
+                                text-[11px]
+                                font-extrabold
+                                text-[#00864b]
+                              "
+                            >
+                              Active
+                            </span>
+
+                          ) : (
+
+                            <span
+                              className="
+                                inline-flex
+                                rounded-[7px]
+                                bg-[#edf0f3]
+                                px-2.5
+                                py-1
+                                text-[11px]
+                                font-extrabold
+                                text-[#718096]
+                              "
+                            >
+                              Inactive
+                            </span>
+
+                          )}
+                        </TableCell>
+
+                        {/* LAST LOGIN */}
+
+                        <TableCell>
+                          <span
+                            className="
+                              whitespace-nowrap
+                              text-[12px]
+                              text-[#91a0b2]
+                            "
+                          >
+                            {formatLastLogin(
+                              user.lastLogin
+                            )}
+                          </span>
+                        </TableCell>
+
+                        {/* ACTIONS */}
+
+                        <TableCell>
+                          <div
+                            className="
+                              flex
+                              items-center
+                              gap-2
+                            "
+                          >
+
+                            {/* EDIT */}
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleEdit(
+                                  user.employeeId
+                                )
+                              }
+                              className="
+                                inline-flex
+                                h-8
+                                items-center
+                                gap-1
+                                rounded-[7px]
+                                border
+                                border-[#b5ead4]
+                                bg-[#f4fff9]
+                                px-2.5
+                                text-[11px]
+                                font-bold
+                                text-[#00a86b]
+                                transition
+                                hover:bg-[#e9fff4]
+                                active:scale-95
+                              "
+                            >
+                              <Pencil
+                                size={12}
+                              />
+                              Edit
+                            </button>
+
+                            {/* ENABLE / DISABLE */}
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleStatusToggle(
+                                  user
+                                )
+                              }
+                              className={`
+                                inline-flex
+                                h-8
+                                items-center
+                                gap-1
+                                rounded-[7px]
+                                border
+                                px-2.5
+                                text-[11px]
+                                font-bold
+                                transition
+                                active:scale-95
+                                ${
+                                  user.status ===
+                                  "Active"
+                                    ? `
+                                      border-[#ffdba8]
+                                      bg-[#fffaf1]
+                                      text-[#d97900]
+                                      hover:bg-[#fff5df]
+                                    `
+                                    : `
+                                      border-[#b5ead4]
+                                      bg-[#f4fff9]
+                                      text-[#00a86b]
+                                      hover:bg-[#e9fff4]
+                                    `
+                                }
+                              `}
+                            >
+                              <Power
+                                size={12}
+                              />
+                              {user.status ===
+                              "Active"
+                                ? "Disable"
+                                : "Enable"}
+                            </button>
+
+                            {/* DELETE - ONLY FOR INACTIVE USERS */}
+
+                            {user.status ===
+                              "Inactive" && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDelete(
+                                    user
+                                  )
+                                }
+                                className="
+                                  inline-flex
+                                  h-8
+                                  items-center
+                                  gap-1
+                                  rounded-[7px]
+                                  border
+                                  border-[#ffcaca]
+                                  bg-[#fff7f7]
+                                  px-2.5
+                                  text-[11px]
+                                  font-bold
+                                  text-[#ef4444]
+                                  transition
+                                  hover:bg-[#fff0f0]
+                                  active:scale-95
+                                "
+                              >
+                                <Trash2
+                                  size={12}
+                                />
+                                Delete
+                              </button>
+                            )}
+
+                          </div>
+                        </TableCell>
+
+                      </tr>
+                    )
+                  )}
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+            {/* ==================================================
+                MOBILE USER CARDS
+                ================================================== */}
+
+            <div
+              className="
+                block
+                divide-y
+                divide-[#edf1f5]
+                md:hidden
+              "
+            >
+
+              {filteredUsers.map(
+                (user) => (
+                  <article
+                    key={user.employeeId}
+                    className="
+                      p-4
+                      transition
+                      active:bg-[#fcfdfe]
+                    "
+                  >
+
+                    {/* CARD HEADER */}
+
+                    <div
+                      className="
+                        flex
+                        items-start
+                        justify-between
+                        gap-3
+                      "
+                    >
+
+                      <div
+                        className="
+                          flex
+                          min-w-0
+                          items-center
+                          gap-3
+                        "
+                      >
+
+                        <div
+                          className="
+                            flex
+                            h-10
+                            w-10
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-full
+                            bg-[#eefbf5]
+                            text-[12px]
+                            font-extrabold
+                            text-[#00a86b]
+                          "
+                        >
                           {user.initials ||
-                            user.name
-                              .split(" ")
-                              .map((part) => part[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase()}
+                            getInitials(user.name)}
                         </div>
 
-                        <span>{user.name}</span>
-                      </div>
-                    </td>
+                        <div className="min-w-0">
+                          <p
+                            className="
+                              truncate
+                              text-[14px]
+                              font-semibold
+                              text-[#111827]
+                            "
+                          >
+                            {user.name}
+                          </p>
 
-                    {/* EMAIL */}
-                    <td>{user.email}</td>
-
-                    {/* ROLE */}
-                    <td>
-                      <span className="role-badge">
-                        {user.role}
-                      </span>
-                    </td>
-
-                    {/* DEPARTMENT */}
-                    <td>{user.department}</td>
-
-                    {/* STATUS */}
-                    <td>
-                      <span
-                        className={`status-badge ${
-                          user.status === "Active"
-                            ? "status-active"
-                            : "status-inactive"
-                        }`}
-                      >
-                        {user.status}
-                      </span>
-                    </td>
-
-                    {/* LAST LOGIN */}
-                    <td>{user.lastLogin || "Never"}</td>
-
-                    {/* ACTIONS */}
-                    <td>
-                      <div className="actions">
-                        <button
-                          type="button"
-                          className="action-button edit-button"
-                          onClick={() =>
-                            handleEdit(user.employeeId)
-                          }
-                        >
-                          ✎ Edit
-                        </button>
-
-                        <button
-                          type="button"
-                          className={`action-button ${
-                            user.status === "Active"
-                              ? "disable-button"
-                              : "enable-button"
-                          }`}
-                          onClick={() =>
-                            handleToggleStatus(
+                          <p
+                            className="
+                              mt-0.5
+                              text-[11px]
+                              font-medium
+                              text-[#66809f]
+                            "
+                          >
+                            {formatEmployeeId(
                               user.employeeId
+                            )}
+                          </p>
+                        </div>
+
+                      </div>
+
+                      {user.status === "Active" ? (
+                        <span
+                          className="
+                            shrink-0
+                            rounded-[7px]
+                            bg-[#dff7ea]
+                            px-2.5
+                            py-1
+                            text-[10px]
+                            font-extrabold
+                            text-[#00864b]
+                          "
+                        >
+                          Active
+                        </span>
+                      ) : (
+                        <span
+                          className="
+                            shrink-0
+                            rounded-[7px]
+                            bg-[#edf0f3]
+                            px-2.5
+                            py-1
+                            text-[10px]
+                            font-extrabold
+                            text-[#718096]
+                          "
+                        >
+                          Inactive
+                        </span>
+                      )}
+
+                    </div>
+
+                    {/* CARD DETAILS */}
+
+                    <div
+                      className="
+                        mt-4
+                        grid
+                        grid-cols-1
+                        gap-3
+                        rounded-[10px]
+                        bg-[#f8fafc]
+                        p-3
+                      "
+                    >
+
+                      <div className="min-w-0">
+                        <p
+                          className="
+                            text-[9px]
+                            font-extrabold
+                            uppercase
+                            tracking-[0.04em]
+                            text-[#91a0b2]
+                          "
+                        >
+                          Email
+                        </p>
+
+                        <p
+                          className="
+                            mt-1
+                            break-all
+                            text-[12px]
+                            font-medium
+                            text-[#294766]
+                          "
+                        >
+                          {user.email}
+                        </p>
+                      </div>
+
+                      <div
+                        className="
+                          grid
+                          grid-cols-2
+                          gap-3
+                        "
+                      >
+
+                        <div className="min-w-0">
+                          <p
+                            className="
+                              text-[9px]
+                              font-extrabold
+                              uppercase
+                              tracking-[0.04em]
+                              text-[#91a0b2]
+                            "
+                          >
+                            Role
+                          </p>
+
+                          <span
+                            className="
+                              mt-1
+                              inline-flex
+                              max-w-full
+                              truncate
+                              rounded-[7px]
+                              bg-[#eef1f4]
+                              px-2
+                              py-1
+                              text-[10px]
+                              font-bold
+                              text-[#405a77]
+                            "
+                          >
+                            {user.role}
+                          </span>
+                        </div>
+
+                        <div className="min-w-0">
+                          <p
+                            className="
+                              text-[9px]
+                              font-extrabold
+                              uppercase
+                              tracking-[0.04em]
+                              text-[#91a0b2]
+                            "
+                          >
+                            Department
+                          </p>
+
+                          <p
+                            className="
+                              mt-1
+                              truncate
+                              text-[11px]
+                              font-medium
+                              text-[#294766]
+                            "
+                          >
+                            {user.department}
+                          </p>
+                        </div>
+
+                      </div>
+
+                      <div
+                        className="
+                          grid
+                          grid-cols-2
+                          gap-3
+                        "
+                      >
+
+                        <div className="min-w-0">
+                          <p
+                            className="
+                              text-[9px]
+                              font-extrabold
+                              uppercase
+                              tracking-[0.04em]
+                              text-[#91a0b2]
+                            "
+                          >
+                            Designation
+                          </p>
+
+                          <p
+                            className="
+                              mt-1
+                              truncate
+                              text-[11px]
+                              font-medium
+                              text-[#294766]
+                            "
+                          >
+                            {user.designation}
+                          </p>
+                        </div>
+
+                        <div className="min-w-0">
+                          <p
+                            className="
+                              text-[9px]
+                              font-extrabold
+                              uppercase
+                              tracking-[0.04em]
+                              text-[#91a0b2]
+                            "
+                          >
+                            Last Login
+                          </p>
+
+                          <p
+                            className="
+                              mt-1
+                              truncate
+                              text-[11px]
+                              font-medium
+                              text-[#91a0b2]
+                            "
+                          >
+                            {formatLastLogin(
+                              user.lastLogin
+                            )}
+                          </p>
+                        </div>
+
+                      </div>
+
+                    </div>
+
+                    {/* CARD ACTIONS */}
+
+                    <div
+                      className="
+                        mt-3
+                        grid
+                        grid-cols-2
+                        gap-2
+                      "
+                    >
+
+                      {/* EDIT */}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleEdit(
+                            user.employeeId
+                          )
+                        }
+                        className="
+                          inline-flex
+                          h-9
+                          items-center
+                          justify-center
+                          gap-1.5
+                          rounded-[8px]
+                          border
+                          border-[#b5ead4]
+                          bg-[#f4fff9]
+                          px-3
+                          text-[11px]
+                          font-bold
+                          text-[#00a86b]
+                          transition
+                          hover:bg-[#e9fff4]
+                          active:scale-[0.98]
+                        "
+                      >
+                        <Pencil size={13} />
+                        Edit
+                      </button>
+
+                      {/* ENABLE / DISABLE */}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleStatusToggle(
+                            user
+                          )
+                        }
+                        className={`
+                          inline-flex
+                          h-9
+                          items-center
+                          justify-center
+                          gap-1.5
+                          rounded-[8px]
+                          border
+                          px-3
+                          text-[11px]
+                          font-bold
+                          transition
+                          active:scale-[0.98]
+                          ${
+                            user.status ===
+                            "Active"
+                              ? `
+                                  border-[#ffdba8]
+                                  bg-[#fffaf1]
+                                  text-[#d97900]
+                                  hover:bg-[#fff5df]
+                                `
+                              : `
+                                  border-[#b5ead4]
+                                  bg-[#f4fff9]
+                                  text-[#00a86b]
+                                  hover:bg-[#e9fff4]
+                                `
+                          }
+                        `}
+                      >
+                        <Power size={13} />
+                        {user.status === "Active"
+                          ? "Disable"
+                          : "Enable"}
+                      </button>
+
+                      {/* DELETE - ONLY FOR INACTIVE USERS */}
+
+                      {user.status === "Inactive" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDelete(
+                              user
                             )
                           }
+                          className="
+                            col-span-2
+                            inline-flex
+                            h-9
+                            items-center
+                            justify-center
+                            gap-1.5
+                            rounded-[8px]
+                            border
+                            border-[#ffcaca]
+                            bg-[#fff7f7]
+                            px-3
+                            text-[11px]
+                            font-bold
+                            text-[#ef4444]
+                            transition
+                            hover:bg-[#fff0f0]
+                            active:scale-[0.98]
+                          "
                         >
-                          {user.status === "Active"
-                            ? "Disable"
-                            : "Enable"}
+                          <Trash2 size={13} />
+                          Delete
                         </button>
+                      )}
 
-                        {user.status === "Inactive" && (
-                          <button
-                            type="button"
-                            className="action-button delete-button"
-                            onClick={() =>
-                              handleDelete(
-                                user.employeeId
-                              )
-                            }
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+
+                  </article>
+                )
+              )}
+
+            </div>
+
+            </>
+
           )}
+
         </div>
+
       </main>
+
+      {/* ======================================================
+          TOAST ANIMATION
+      ====================================================== */}
+
+      <style>
+        {`
+          @keyframes toastIn {
+            from {
+              opacity: 0;
+              transform: translateY(-10px) translateX(10px);
+            }
+
+            to {
+              opacity: 1;
+              transform: translateY(0) translateX(0);
+            }
+          }
+        `}
+      </style>
+
     </div>
   );
 };
+
+// ============================================================
+// TABLE HEADER
+// ============================================================
+
+const TableHeader: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => (
+  <th
+    className="
+      px-4
+      py-[13px]
+      text-center
+      text-[11px]
+      font-extrabold
+      tracking-[0.02em]
+      text-[#66809f]
+    "
+  >
+    {children}
+  </th>
+);
+
+// ============================================================
+// TABLE CELL
+// ============================================================
+
+const TableCell: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => (
+  <td
+    className="
+      h-[57px]
+      px-4
+      py-2
+      align-middle
+    "
+  >
+    {children}
+  </td>
+);
+
+// ============================================================
+// FORM INPUT
+// ============================================================
+
+interface FormInputProps {
+  label: string;
+
+  name:
+    | "name"
+    | "email"
+    | "password";
+
+  value: string;
+
+  onChange: (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => void;
+
+  placeholder: string;
+
+  type?: string;
+
+  error?: string;
+}
+
+const FormInput: React.FC<
+  FormInputProps
+> = ({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  error,
+}) => (
+  <div
+    className="
+      flex
+      min-w-0
+      flex-col
+      gap-2
+    "
+  >
+
+    <label
+      htmlFor={name}
+      className="
+        text-[11px]
+        font-extrabold
+        text-[#526b87]
+      "
+    >
+      {label}
+    </label>
+
+    <input
+      id={name}
+      name={name}
+      type={type}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      autoComplete={
+        name === "password"
+          ? "new-password"
+          : "off"
+      }
+      className={`
+        h-[42px]
+        w-full
+        rounded-[8px]
+        border
+        bg-white
+        px-3
+        text-[13px]
+        text-[#243b5a]
+        outline-none
+        placeholder:text-[#94a1b0]
+        focus:ring-2
+        ${
+          error
+            ? "border-[#ef4444] focus:border-[#ef4444] focus:ring-[#ef4444]/10"
+            : "border-[#d8dee6] focus:border-[#ff3040] focus:ring-[#ff3040]/10"
+        }
+      `}
+    />
+
+    {/* INLINE ERROR */}
+
+    {error && (
+      <p
+        className="
+          -mt-0.5
+          text-[11px]
+          font-semibold
+          leading-4
+          text-[#ef4444]
+        "
+      >
+        {error}
+      </p>
+    )}
+
+  </div>
+);
+
+// ============================================================
+// FORM SELECT
+// ============================================================
+
+interface FormSelectProps {
+  label: string;
+
+  name:
+    | "role"
+    | "department"
+    | "designation";
+
+  value: string;
+
+  onChange: (
+    event: React.ChangeEvent<HTMLSelectElement>
+  ) => void;
+
+  placeholder: string;
+
+  options: string[];
+}
+
+const FormSelect: React.FC<
+  FormSelectProps
+> = ({
+  label,
+  name,
+  value,
+  onChange,
+  placeholder,
+  options,
+}) => (
+  <div
+    className="
+      flex
+      min-w-0
+      flex-col
+      gap-2
+    "
+  >
+
+    <label
+      htmlFor={name}
+      className="
+        text-[11px]
+        font-extrabold
+        text-[#526b87]
+      "
+    >
+      {label}
+    </label>
+
+    <select
+      id={name}
+      name={name}
+      value={value}
+      onChange={onChange}
+      className="
+        h-[42px]
+        w-full
+        rounded-[8px]
+        border
+        border-[#d8dee6]
+        bg-white
+        px-3
+        text-[13px]
+        text-[#243b5a]
+        outline-none
+        focus:border-[#ff3040]
+        focus:ring-2
+        focus:ring-[#ff3040]/10
+      "
+    >
+
+      <option
+        value=""
+        disabled
+      >
+        {placeholder}
+      </option>
+
+      {options.map(
+        (option) => (
+          <option
+            key={option}
+            value={option}
+          >
+            {option}
+          </option>
+        )
+      )}
+
+    </select>
+
+  </div>
+);
 
 export default SuperAdminUsers;

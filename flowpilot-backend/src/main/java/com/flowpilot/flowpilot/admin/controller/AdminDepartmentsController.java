@@ -6,6 +6,9 @@ import com.flowpilot.flowpilot.admin.service.AdminDepartmentsService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.Map;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/departments")
@@ -30,4 +33,22 @@ public class AdminDepartmentsController {
                 .status(HttpStatus.CREATED)
                 .body(department);
     }
+
+    @GetMapping
+    public ResponseEntity<List<AdminDepartment>> getAllDepartments() {
+
+        List<AdminDepartment> departments =
+                service.getAllDepartments();
+
+        return ResponseEntity.ok(departments);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+public ResponseEntity<Map<String, String>> handleIllegalArgumentException(
+        IllegalArgumentException ex) {
+
+    return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(Map.of("message", ex.getMessage()));
+}
 }

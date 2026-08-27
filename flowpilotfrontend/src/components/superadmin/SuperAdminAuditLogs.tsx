@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 
 type FilterType =
@@ -7,7 +7,8 @@ type FilterType =
   | 'This Week'
   | 'USER_CREATED'
   | 'PROJECT_UPDATED'
-  | 'SPRINT_STARTED';
+  | 'SPRINT_STARTED'
+  | 'TIME_LOGGED';
 
 interface AuditLog {
   id: number;
@@ -17,91 +18,10 @@ interface AuditLog {
   entity: string;
   entityId: string;
   ip: string;
-  day: 'Today' | 'Yesterday';
+  day: string;
 }
 
-const auditLogs: AuditLog[] = [
-  {
-    id: 1,
-    time: '10:42 AM',
-    user: 'Nisha Agarwal',
-    action: 'USER_CREATED',
-    entity: 'User',
-    entityId: 'EMP-011',
-    ip: '192.168.1.14',
-    day: 'Today',
-  },
-  {
-    id: 2,
-    time: '10:18 AM',
-    user: 'Arjun Shah',
-    action: 'PROJECT_UPDATED',
-    entity: 'Project',
-    entityId: 'PRJ-002',
-    ip: '192.168.1.22',
-    day: 'Today',
-  },
-  {
-    id: 3,
-    time: '09:55 AM',
-    user: 'Aryan Kapoor',
-    action: 'SPRINT_STARTED',
-    entity: 'Sprint',
-    entityId: 'SPR-012',
-    ip: '192.168.1.8',
-    day: 'Today',
-  },
-  {
-    id: 4,
-    time: '09:30 AM',
-    user: 'Sneha Rao',
-    action: 'TASK_STATUS_CHANGED',
-    entity: 'Task',
-    entityId: 'T-042',
-    ip: '192.168.1.33',
-    day: 'Today',
-  },
-  {
-    id: 5,
-    time: '09:12 AM',
-    user: 'Priya Rajan',
-    action: 'BUG_FILED',
-    entity: 'Bug',
-    entityId: 'BUG-089',
-    ip: '192.168.1.11',
-    day: 'Today',
-  },
-  {
-    id: 6,
-    time: '08:45 AM',
-    user: 'Rajeev Kumar',
-    action: 'ROLE_ASSIGNED',
-    entity: 'User',
-    entityId: 'EMP-010',
-    ip: '192.168.1.1',
-    day: 'Today',
-  },
-  {
-    id: 7,
-    time: 'Yesterday',
-    user: 'Nisha Agarwal',
-    action: 'USER_DISABLED',
-    entity: 'User',
-    entityId: 'EMP-009',
-    ip: '192.168.1.14',
-    day: 'Yesterday',
-  },
-  {
-    id: 8,
-    time: 'Yesterday',
-    user: 'Arjun Shah',
-    action: 'SPRINT_CLOSED',
-    entity: 'Sprint',
-    entityId: 'SPR-011',
-    ip: '192.168.1.22',
-    day: 'Yesterday',
-  },
-];
+const API_URL = 'http://localhost:8080/api/superadmin/audit-logs';
 
 const filters: FilterType[] = [
   'All',
@@ -110,33 +30,120 @@ const filters: FilterType[] = [
   'USER_CREATED',
   'PROJECT_UPDATED',
   'SPRINT_STARTED',
+  'TIME_LOGGED',
 ];
+
+const getToken = () => {
+  return (
+    localStorage.getItem('token') ||
+    localStorage.getItem('jwt') ||
+    localStorage.getItem('accessToken')
+  );
+};
+
+const getAuthHeaders = (): HeadersInit => {
+  const token = getToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
+
+const mapAuditLog = (item: Record<string, unknown>): AuditLog => ({
+  id: Number(item.id ?? 0),
+  time: String(item.time ?? ''),
+  user: String(item.user ?? item.userName ?? ''),
+  action: String(item.action ?? ''),
+  entity: String(item.entity ?? item.entityName ?? ''),
+  entityId: String(item.entityId ?? ''),
+  ip: String(item.ip ?? item.ipAddress ?? ''),
+  day: String(item.day ?? ''),
+});
 
 const SuperAdminAuditLogs: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<FilterType>('All');
   const [search, setSearch] = useState('');
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      const fetchAuditLogs = async () => {
+        try {
+          setLoading(true);
+          setError('');
+
+          const token = getToken();
+          if (!token) {
+            throw new Error('Please log in again to view audit logs.');
+          }
+
+          const params = new URLSearchParams();
+          params.append('filter', activeFilter);
+          if (search.trim()) {
+            params.append('search', search.trim());
+          }
+
+          const response = await fetch(`${API_URL}?${params.toString()}`, {
+            method: 'GET',
+            headers: getAuthHeaders(),
+            signal: controller.signal,
+          });
+
+          if (response.status === 401 || response.status === 403) {
+            throw new Error('Please log in again to view audit logs.');
+          }
+
+          if (!response.ok) {
+            throw new Error(`Failed to load audit logs: ${response.status}`);
+          }
+
+          const data = await response.json();
+          const rows = Array.isArray(data) ? data : [];
+          setAuditLogs(rows.map((item) => mapAuditLog(item as Record<string, unknown>)));
+        } catch (err) {
+          if (controller.signal.aborted) {
+            return;
+          }
+
+          console.error('Error loading audit logs:', err);
+          setError(
+            err instanceof Error ? err.message : 'Unable to load audit logs'
+          );
+          setAuditLogs([]);
+        } finally {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        }
+      };
+
+      fetchAuditLogs();
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeFilter, search]);
 
   const filteredLogs = useMemo(() => {
     const query = search.trim().toLowerCase();
+    if (!query) {
+      return auditLogs;
+    }
 
-    return auditLogs.filter((log) => {
-      const matchesSearch =
-        !query ||
+    return auditLogs.filter(
+      (log) =>
         log.user.toLowerCase().includes(query) ||
         log.action.toLowerCase().includes(query) ||
         log.entity.toLowerCase().includes(query) ||
         log.entityId.toLowerCase().includes(query) ||
-        log.ip.toLowerCase().includes(query);
-
-      const matchesFilter =
-        activeFilter === 'All' ||
-        activeFilter === 'This Week' ||
-        (activeFilter === 'Today' && log.day === 'Today') ||
-        log.action === activeFilter;
-
-      return matchesSearch && matchesFilter;
-    });
-  }, [activeFilter, search]);
+        log.ip.toLowerCase().includes(query)
+    );
+  }, [auditLogs, search]);
 
   return (
     <div className="w-full min-w-0">
@@ -175,6 +182,14 @@ const SuperAdminAuditLogs: React.FC = () => {
           />
         </div>
       </div>
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[11px] font-semibold text-red-500">
+          {error}
+        </div>
+      )}
+      {loading && (
+        <p className="mb-3 text-[11px] font-semibold text-slate-400">Loading audit logs...</p>
+      )}
 
       {/* AUDIT TABLE — desktop */}
       <div className="hidden md:block w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">

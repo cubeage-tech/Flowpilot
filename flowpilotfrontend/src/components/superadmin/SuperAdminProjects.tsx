@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-
+import React, { useEffect, useState } from 'react';
 
 interface Project {
   code: string;
@@ -13,63 +12,74 @@ interface Project {
   health: 'On Track' | 'At Risk' | 'Delayed' | 'On Hold';
 }
 
-const initialProjects: Project[] = [
-  {
-    code: 'PRJ-001',
-    name: 'IPMT Platform v2',
-    manager: 'Arjun Shah',
-    status: 'In Progress',
-    sprint: 'Sprint 12',
-    startDate: '01 Jan 2026',
-    endDate: '30 Jun 2026',
-    progress: 72,
-    health: 'On Track',
-  },
-  {
-    code: 'PRJ-002',
-    name: 'E-Commerce Relaunch',
-    manager: 'Rohit Varma',
-    status: 'In Progress',
-    sprint: 'Sprint 8',
-    startDate: '15 Feb 2026',
-    endDate: '30 Sep 2026',
-    progress: 45,
-    health: 'At Risk',
-  },
-  {
-    code: 'PRJ-003',
-    name: 'Mobile App Dev',
-    manager: 'Arjun Shah',
-    status: 'Planning',
-    sprint: 'Sprint 2',
-    startDate: '01 Apr 2026',
-    endDate: '31 Dec 2026',
-    progress: 22,
-    health: 'On Track',
-  },
-  {
-    code: 'PRJ-004',
-    name: 'API Gateway Migration',
-    manager: 'Karan Mehta',
-    status: 'In Progress',
-    sprint: 'Sprint 5',
-    startDate: '01 Mar 2026',
-    endDate: '31 Aug 2026',
-    progress: 58,
-    health: 'Delayed',
-  },
-  {
-    code: 'PRJ-005',
-    name: 'Analytics Dashboard',
-    manager: 'Priya Rajan',
-    status: 'On Hold',
-    sprint: '—',
-    startDate: '01 May 2026',
-    endDate: '31 Oct 2026',
-    progress: 0,
-    health: 'On Hold',
-  },
-];
+/*
+ * This is the exact structure returned by the Spring Boot backend.
+ *
+ * Backend:
+ * PMProject
+ */
+interface BackendProject {
+  id: number;
+  projectCode: string;
+  projectName: string;
+  sprint: string | null;
+  team: string | null;
+  budget: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  status: string | null;
+  progress: number | null;
+}
+
+/*
+ * Convert backend PMProject into the structure
+ * already used by the SuperAdmin UI.
+ */
+const convertBackendProject = (
+  project: BackendProject
+): Project => {
+  const backendStatus = project.status || 'Planning';
+
+  let status: Project['status'];
+
+  if (backendStatus === 'In Progress') {
+    status = 'In Progress';
+  } else if (backendStatus === 'On Hold') {
+    status = 'On Hold';
+  } else {
+    status = 'Planning';
+  }
+
+  /*
+   * Health is not currently stored in PMProject.
+   * Therefore we derive it from status/progress.
+   */
+  let health: Project['health'] = 'On Track';
+
+  const progress = project.progress ?? 0;
+
+  if (status === 'On Hold') {
+    health = 'On Hold';
+  } else if (progress < 30) {
+    health = 'At Risk';
+  } else if (progress < 50) {
+    health = 'At Risk';
+  } else {
+    health = 'On Track';
+  }
+
+  return {
+    code: project.projectCode,
+    name: project.projectName,
+    manager: project.team || '—',
+    status,
+    sprint: project.sprint || '—',
+    startDate: project.startDate || '',
+    endDate: project.endDate || '',
+    progress,
+    health,
+  };
+};
 
 const statusClasses: Record<Project['status'], string> = {
   'In Progress': 'bg-slate-100 text-slate-600',
@@ -78,19 +88,33 @@ const statusClasses: Record<Project['status'], string> = {
 };
 
 const healthClasses: Record<Project['health'], string> = {
-  'On Track': 'border border-emerald-100 bg-emerald-50 text-emerald-600',
-  'At Risk': 'border border-amber-100 bg-amber-50 text-amber-600',
-  Delayed: 'border border-rose-100 bg-rose-50 text-rose-500',
-  'On Hold': 'border border-slate-200 bg-slate-50 text-slate-500',
+  'On Track':
+    'border border-emerald-100 bg-emerald-50 text-emerald-600',
+
+  'At Risk':
+    'border border-amber-100 bg-amber-50 text-amber-600',
+
+  Delayed:
+    'border border-rose-100 bg-rose-50 text-rose-500',
+
+  'On Hold':
+    'border border-slate-200 bg-slate-50 text-slate-500',
 };
 
 const formatProjectDate = (date: string) => {
-  if (!date) return '';
+  if (!date) return '—';
 
   const [year, month, day] = date.split('-').map(Number);
-  if (!year || !month || !day) return date;
 
-  return new Date(year, month - 1, day).toLocaleDateString('en-GB', {
+  if (!year || !month || !day) {
+    return date;
+  }
+
+  return new Date(
+    year,
+    month - 1,
+    day
+  ).toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -98,20 +122,74 @@ const formatProjectDate = (date: string) => {
 };
 
 export const SuperAdminProjects: React.FC = () => {
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
-  const [showAddProject, setShowAddProject] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
 
-  const [newProject, setNewProject] = useState({
-    code: '',
-    name: '',
-    manager: '',
-    status: 'In Progress' as Project['status'],
-    sprint: '',
-    startDate: '',
-    endDate: '',
-    progress: 0,
-    health: 'On Track' as Project['health'],
-  });
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState('');
+
+  /*
+   * LOAD PROJECTS FROM BACKEND
+   *
+   * This is the important change.
+   *
+   * PM creates:
+   * POST /api/pm/projects
+   *
+   * SuperAdmin reads:
+   * GET /api/superadmin/projects
+   */
+  const loadProjects = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      const token = localStorage.getItem('token');
+
+const response = await fetch(
+  'http://localhost:8080/api/superadmin/projects',
+  {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to load projects (${response.status})`
+        );
+      }
+
+      const data: BackendProject[] = await response.json();
+
+      const convertedProjects = data.map(
+        (project: BackendProject) =>
+          convertBackendProject(project)
+      );
+
+      setProjects(convertedProjects);
+    } catch (err) {
+      console.error('Error loading projects:', err);
+
+      setError(
+        'Unable to load projects from the server.'
+      );
+
+      setProjects([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * Load projects when SuperAdmin Projects page opens.
+   */
+  useEffect(() => {
+    loadProjects();
+  }, []);
 
   return (
     <div className="w-full min-w-0 overflow-x-hidden">
@@ -137,608 +215,627 @@ export const SuperAdminProjects: React.FC = () => {
       `}</style>
 
       <div className="w-full">
-        {/* ADD PROJECT */}
-        <div className="mb-[14px] flex items-center justify-center">
+
+        {/* HEADER / REFRESH */}
+        <div className="mb-[14px] flex items-center justify-between">
+          <div>
+            <h2 className="text-[18px] font-bold text-slate-900">
+              Projects
+            </h2>
+
+            <p className="mt-[3px] text-[11px] text-slate-400">
+              Projects created by Project Managers
+            </p>
+          </div>
+
           <button
             type="button"
-            onClick={() => setShowAddProject(true)}
-            className="h-[42px] rounded-[10px] bg-red-500 px-[18px] text-[12px] font-bold text-white shadow-sm transition hover:bg-red-600 active:scale-[0.98] whitespace-nowrap"
+            onClick={loadProjects}
+            disabled={loading}
+            className="
+              h-[40px]
+              rounded-[9px]
+              border
+              border-slate-200
+              bg-white
+              px-[15px]
+              text-[11px]
+              font-bold
+              text-slate-600
+              shadow-sm
+              transition
+              hover:bg-slate-50
+              disabled:cursor-not-allowed
+              disabled:opacity-50
+            "
           >
-            + Add Project
+            {loading ? 'Loading...' : 'Refresh'}
           </button>
         </div>
 
-        {showAddProject && (
+        {/* ERROR */}
+        {error && (
           <div
             className="
-              fixed
-              inset-0
-              z-50
-              flex
-              items-center
-              justify-center
-              bg-slate-900/30
-              p-4
+              mb-[14px]
+              rounded-[10px]
+              border
+              border-rose-100
+              bg-rose-50
+              px-[14px]
+              py-[12px]
+              text-[12px]
+              font-medium
+              text-rose-600
             "
           >
-            <div
-              className="
-                w-full
-                max-w-[520px]
-                rounded-[16px]
-                bg-white
-                p-[24px]
-                shadow-xl
-                max-sm:p-[18px]
-              "
-            >
-              <div className="mb-[20px] flex items-start justify-between">
-                <div>
-                  <h3 className="text-[18px] font-bold text-slate-900">
-                    Add New Project
-                  </h3>
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Create a new project.
-                  </p>
-                </div>
+            {error}
+          </div>
+        )}
 
-                <button
-                  type="button"
-                  onClick={() => setShowAddProject(false)}
-                  className="
-                    text-[22px]
-                    leading-none
-                    text-slate-400
-                    hover:text-slate-700
-                  "
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
+        {/* LOADING */}
+        {loading && (
+          <div
+            className="
+              rounded-[16px]
+              border
+              border-slate-200/80
+              bg-white
+              px-[20px]
+              py-[55px]
+              text-center
+              shadow-[0_2px_7px_rgba(15,23,42,0.04)]
+            "
+          >
+            <p className="text-[13px] font-bold text-slate-600">
+              Loading projects...
+            </p>
 
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
+            <p className="mt-1 text-[11px] text-slate-400">
+              Fetching projects from the server.
+            </p>
+          </div>
+        )}
 
-                  const project: Project = {
-                    ...newProject,
-                    sprint: newProject.sprint || '—',
-                    progress: Math.max(
-                      0,
-                      Math.min(100, Number(newProject.progress))
-                    ),
-                  };
+        {/* DESKTOP TABLE */}
+        {!loading && (
+          <div
+            className="
+              hidden
+              md:block
+              w-full
+              overflow-hidden
+              rounded-[16px]
+              border
+              border-slate-200/80
+              bg-white
+              shadow-[0_2px_7px_rgba(15,23,42,0.04)]
+            "
+          >
+            <div className="projects-scroll w-full overflow-x-auto">
 
-                  setProjects((current) => [...current, project]);
-                  setShowAddProject(false);
+              <table className="w-full min-w-[1260px] border-collapse">
 
-                  setNewProject({
-                    code: '',
-                    name: '',
-                    manager: '',
-                    status: 'In Progress',
-                    sprint: '',
-                    startDate: '',
-                    endDate: '',
-                    progress: 0,
-                    health: 'On Track',
-                  });
-                }}
-                className="grid grid-cols-2 gap-[12px] max-sm:grid-cols-1"
-              >
-                <label>
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    Project Code
-                  </span>
-                  <input
-                    required
-                    value={newProject.code}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        code: event.target.value,
-                      }))
-                    }
-                    placeholder="PRJ-006"
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      outline-none
-                      focus:border-slate-300
-                    "
-                  />
-                </label>
+                <colgroup>
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '17%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '7%' }} />
+                </colgroup>
 
-                <label>
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    Project Name
-                  </span>
-                  <input
-                    required
-                    value={newProject.name}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="Project name"
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      outline-none
-                      focus:border-slate-300
-                    "
-                  />
-                </label>
+                <thead>
+                  <tr className="border-b border-slate-100">
 
-                <label>
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    Project Manager
-                  </span>
-                  <input
-                    required
-                    value={newProject.manager}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        manager: event.target.value,
-                      }))
-                    }
-                    placeholder="Manager name"
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      outline-none
-                      focus:border-slate-300
-                    "
-                  />
-                </label>
+                    {[
+                      'CODE',
+                      'PROJECT NAME',
+                      'PROJECT MANAGER',
+                      'STATUS',
+                      'ACTIVE SPRINT',
+                      'START DATE',
+                      'END DATE',
+                      'PROGRESS',
+                      'HEALTH',
+                    ].map((heading) => (
+                      <th
+                        key={heading}
+                        className="
+                          h-[50px]
+                          px-[20px]
+                          text-left
+                          align-middle
+                          text-[10px]
+                          font-bold
+                          tracking-[0.04em]
+                          text-slate-500
+                          whitespace-nowrap
+                        "
+                      >
+                        {heading}
+                      </th>
+                    ))}
 
-                <label>
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    Active Sprint
-                  </span>
-                  <input
-                    value={newProject.sprint}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        sprint: event.target.value,
-                      }))
-                    }
-                    placeholder="Sprint 1"
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      outline-none
-                      focus:border-slate-300
-                    "
-                  />
-                </label>
+                  </tr>
+                </thead>
 
-                <label>
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    Start Date
-                  </span>
-                  <input
-                    required
-                    type="date"
-                    value={newProject.startDate}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        startDate: event.target.value,
-                      }))
-                    }
-                    onKeyDown={(event) => event.preventDefault()}
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      text-slate-600
-                      outline-none
-                      focus:border-slate-300
-                      cursor-pointer
-                    "
-                  />
-                </label>
+                <tbody>
 
-                <label>
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    End Date
-                  </span>
-                  <input
-                    required
-                    type="date"
-                    value={newProject.endDate}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        endDate: event.target.value,
-                      }))
-                    }
-                    onKeyDown={(event) => event.preventDefault()}
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      text-slate-600
-                      outline-none
-                      focus:border-slate-300
-                      cursor-pointer
-                    "
-                  />
-                </label>
+                  {projects.map((project) => (
+                    <tr
+                      key={project.code}
+                      className="
+                        border-b
+                        border-slate-100
+                        last:border-b-0
+                        transition-colors
+                        hover:bg-slate-50/40
+                      "
+                    >
 
-                <label>
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    Status
-                  </span>
-                  <select
-                    value={newProject.status}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        status: event.target.value as Project['status'],
-                      }))
-                    }
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      outline-none
-                    "
-                  >
-                    <option>In Progress</option>
-                    <option>Planning</option>
-                    <option>On Hold</option>
-                  </select>
-                </label>
+                      {/* CODE */}
+                      <td
+                        className="
+                          h-[61px]
+                          px-[20px]
+                          align-middle
+                          text-[13px]
+                          font-medium
+                          text-slate-400
+                          whitespace-nowrap
+                        "
+                      >
+                        {project.code}
+                      </td>
 
-                <label>
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    Health
-                  </span>
-                  <select
-                    value={newProject.health}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        health: event.target.value as Project['health'],
-                      }))
-                    }
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      outline-none
-                    "
-                  >
-                    <option>On Track</option>
-                    <option>At Risk</option>
-                    <option>Delayed</option>
-                    <option>On Hold</option>
-                  </select>
-                </label>
+                      {/* PROJECT NAME */}
+                      <td
+                        className="
+                          h-[61px]
+                          px-[20px]
+                          align-middle
+                          text-[13px]
+                          font-bold
+                          text-slate-900
+                          whitespace-nowrap
+                        "
+                      >
+                        {project.name}
+                      </td>
 
-                <label className="col-span-2 max-sm:col-span-1">
-                  <span className="mb-[6px] block text-[11px] font-bold text-slate-500">
-                    Progress %
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={newProject.progress}
-                    onChange={(event) =>
-                      setNewProject((current) => ({
-                        ...current,
-                        progress: Number(event.target.value),
-                      }))
-                    }
-                    className="
-                      h-[40px]
-                      w-full
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[12px]
-                      text-[12px]
-                      outline-none
-                    "
-                  />
-                </label>
+                      {/* MANAGER / TEAM */}
+                      <td
+                        className="
+                          h-[61px]
+                          px-[20px]
+                          align-middle
+                          text-[13px]
+                          font-medium
+                          text-slate-500
+                          whitespace-nowrap
+                        "
+                      >
+                        {project.manager}
+                      </td>
 
-                <div className="col-span-2 mt-[6px] flex justify-end gap-[10px] max-sm:col-span-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddProject(false)}
-                    className="
-                      h-[40px]
-                      rounded-[9px]
-                      border
-                      border-slate-200
-                      px-[16px]
-                      text-[12px]
-                      font-bold
-                      text-slate-500
-                      hover:bg-slate-50
-                    "
-                  >
-                    Cancel
-                  </button>
+                      {/* STATUS */}
+                      <td className="h-[61px] px-[20px] align-middle">
+                        <span
+                          className={`
+                            inline-flex
+                            items-center
+                            rounded-[8px]
+                            px-[10px]
+                            py-[4px]
+                            text-[10px]
+                            font-bold
+                            leading-[15px]
+                            whitespace-nowrap
+                            ${statusClasses[project.status]}
+                          `}
+                        >
+                          {project.status}
+                        </span>
+                      </td>
 
-                  <button
-                    type="submit"
-                    className="
-                      h-[40px]
-                      rounded-[9px]
-                      bg-red-500
-                      px-[18px]
-                      text-[12px]
-                      font-bold
-                      text-white
-                      hover:bg-red-600
-                    "
-                  >
-                    Add Project
-                  </button>
-                </div>
-              </form>
+                      {/* SPRINT */}
+                      <td
+                        className="
+                          h-[61px]
+                          px-[20px]
+                          align-middle
+                          text-[13px]
+                          font-medium
+                          text-slate-500
+                          whitespace-nowrap
+                        "
+                      >
+                        {project.sprint}
+                      </td>
+
+                      {/* START DATE */}
+                      <td
+                        className="
+                          h-[61px]
+                          px-[20px]
+                          align-middle
+                          text-[13px]
+                          font-medium
+                          text-slate-400
+                          whitespace-nowrap
+                        "
+                      >
+                        {formatProjectDate(
+                          project.startDate
+                        )}
+                      </td>
+
+                      {/* END DATE */}
+                      <td
+                        className="
+                          h-[61px]
+                          px-[20px]
+                          align-middle
+                          text-[13px]
+                          font-medium
+                          text-slate-400
+                          whitespace-nowrap
+                        "
+                      >
+                        {formatProjectDate(
+                          project.endDate
+                        )}
+                      </td>
+
+                      {/* PROGRESS */}
+                      <td className="h-[61px] px-[20px] align-middle">
+
+                        <div className="w-[120px]">
+
+                          <div
+                            className="
+                              mb-[5px]
+                              text-[10px]
+                              font-medium
+                              text-slate-500
+                            "
+                          >
+                            {project.progress}%
+                          </div>
+
+                          <div
+                            className="
+                              h-[5px]
+                              w-full
+                              overflow-hidden
+                              rounded-full
+                              bg-slate-100
+                            "
+                          >
+                            <div
+                              className={`
+                                h-full
+                                rounded-full
+                                transition-all
+                                ${
+                                  project.health ===
+                                  'At Risk'
+                                    ? 'bg-amber-500'
+                                    : project.health ===
+                                        'Delayed'
+                                      ? 'bg-rose-500'
+                                      : 'bg-emerald-500'
+                                }
+                              `}
+                              style={{
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(
+                                    0,
+                                    project.progress
+                                  )
+                                )}%`,
+                              }}
+                            />
+                          </div>
+
+                        </div>
+
+                      </td>
+
+                      {/* HEALTH */}
+                      <td className="h-[61px] px-[20px] align-middle">
+
+                        <span
+                          className={`
+                            inline-flex
+                            items-center
+                            rounded-[8px]
+                            px-[10px]
+                            py-[4px]
+                            text-[10px]
+                            font-bold
+                            leading-[15px]
+                            whitespace-nowrap
+                            ${healthClasses[project.health]}
+                          `}
+                        >
+                          {project.health}
+                        </span>
+
+                      </td>
+
+                    </tr>
+                  ))}
+
+                  {/* EMPTY */}
+                  {projects.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={9}
+                        className="py-[55px] text-center"
+                      >
+                        <p
+                          className="
+                            text-[13px]
+                            font-bold
+                            text-slate-600
+                          "
+                        >
+                          No projects found
+                        </p>
+
+                        <p
+                          className="
+                            mt-1
+                            text-[11px]
+                            text-slate-400
+                          "
+                        >
+                          Projects created by Project
+                          Managers will appear here.
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+
+                </tbody>
+
+              </table>
+
             </div>
           </div>
         )}
 
-        {/* TABLE — desktop */}
-        <div className="hidden md:block w-full overflow-hidden rounded-[16px] border border-slate-200/80 bg-white shadow-[0_2px_7px_rgba(15,23,42,0.04)]">
-          <div className="projects-scroll w-full overflow-x-auto">
-            <table className="w-full min-w-[1260px] border-collapse">
-              <colgroup>
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '17%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '11%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '7%' }} />
-              </colgroup>
+        {/* MOBILE CARDS */}
+        {!loading && (
+          <div className="md:hidden space-y-3">
 
-              <thead>
-                <tr className="border-b border-slate-100">
-                  {[
-                    'CODE',
-                    'PROJECT NAME',
-                    'PROJECT MANAGER',
-                    'STATUS',
-                    'ACTIVE SPRINT',
-                    'START DATE',
-                    'END DATE',
-                    'PROGRESS',
-                    'HEALTH',
-                  ].map((heading) => (
-                    <th
-                      key={heading}
-                      className="
-                        h-[50px]
-                        px-[20px]
-                        text-left
-                        align-middle
-                        text-[10px]
-                        font-bold
-                        tracking-[0.04em]
-                        text-slate-500
-                        whitespace-nowrap
-                        max-md:px-[16px]
-                      "
-                    >
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
+            {projects.length === 0 ? (
+              <div
+                className="
+                  rounded-[14px]
+                  border
+                  border-dashed
+                  border-slate-200
+                  bg-white
+                  p-8
+                  text-center
+                "
+              >
+                <p className="text-[13px] font-bold text-slate-600">
+                  No projects found
+                </p>
 
-              <tbody>
-                {projects.map((project) => (
-                  <tr
-                    key={project.code}
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Projects created by Project Managers
+                  will appear here.
+                </p>
+              </div>
+            ) : (
+              projects.map((project) => (
+
+                <div
+                  key={project.code}
+                  className="
+                    rounded-[14px]
+                    border
+                    border-slate-200/80
+                    bg-white
+                    p-4
+                    shadow-sm
+                  "
+                >
+
+                  <div
                     className="
-                      border-b
-                      border-slate-100
-                      last:border-b-0
-                      transition-colors
-                      hover:bg-slate-50/40
+                      mb-3
+                      flex
+                      items-start
+                      justify-between
+                      gap-2
                     "
                   >
-                    <td className="h-[61px] px-[20px] align-middle text-[13px] font-medium text-slate-400 whitespace-nowrap max-md:px-[16px]">
-                      {project.code}
-                    </td>
 
-                    <td className="h-[61px] px-[20px] align-middle text-[13px] font-bold text-slate-900 whitespace-nowrap max-md:px-[16px]">
-                      {project.name}
-                    </td>
+                    <div className="min-w-0">
 
-                    <td className="h-[61px] px-[20px] align-middle text-[13px] font-medium text-slate-500 whitespace-nowrap max-md:px-[16px]">
-                      {project.manager}
-                    </td>
-
-                    <td className="h-[61px] px-[20px] align-middle max-md:px-[16px]">
-                      <span
-                        className={`
-                          inline-flex
-                          items-center
-                          rounded-[8px]
-                          px-[10px]
-                          py-[4px]
+                      <p
+                        className="
+                          mb-0.5
+                          font-mono
                           text-[10px]
-                          font-bold
-                          leading-[15px]
-                          whitespace-nowrap
-                          ${statusClasses[project.status]}
-                        `}
+                          text-slate-400
+                        "
                       >
-                        {project.status}
-                      </span>
-                    </td>
+                        {project.code}
+                      </p>
 
-                    <td className="h-[61px] px-[20px] align-middle text-[13px] font-medium text-slate-500 whitespace-nowrap max-md:px-[16px]">
+                      <p
+                        className="
+                          text-[13px]
+                          font-bold
+                          leading-tight
+                          text-slate-900
+                        "
+                      >
+                        {project.name}
+                      </p>
+
+                      <p
+                        className="
+                          mt-0.5
+                          text-[11px]
+                          text-slate-500
+                        "
+                      >
+                        {project.manager}
+                      </p>
+
+                    </div>
+
+                    <span
+                      className={`
+                        inline-flex
+                        shrink-0
+                        items-center
+                        rounded-[8px]
+                        px-[10px]
+                        py-[4px]
+                        text-[10px]
+                        font-bold
+                        whitespace-nowrap
+                        ${healthClasses[project.health]}
+                      `}
+                    >
+                      {project.health}
+                    </span>
+
+                  </div>
+
+                  <div
+                    className="
+                      mb-3
+                      grid
+                      grid-cols-2
+                      gap-2
+                      text-[11px]
+                      text-slate-500
+                    "
+                  >
+
+                    <div>
+                      <span className="text-slate-400">
+                        Sprint:{' '}
+                      </span>
                       {project.sprint}
-                    </td>
+                    </div>
 
-                    <td className="h-[61px] px-[20px] align-middle text-[13px] font-medium text-slate-400 whitespace-nowrap max-md:px-[16px]">
-                      {formatProjectDate(project.startDate)}
-                    </td>
-
-                    <td className="h-[61px] px-[20px] align-middle text-[13px] font-medium text-slate-400 whitespace-nowrap max-md:px-[16px]">
-                      {formatProjectDate(project.endDate)}
-                    </td>
-
-                    {/* EXISTING PROGRESS FUNCTIONALITY */}
-                    <td className="h-[61px] px-[20px] align-middle max-md:px-[16px]">
-                      <div className="w-[120px]">
-                        <div className="mb-[5px] text-[10px] font-medium text-slate-500">
-                          {project.progress}%
-                        </div>
-
-                        <div className="h-[5px] w-full overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className={`
-                              h-full
-                              rounded-full
-                              transition-all
-                              ${
-                                project.health === 'At Risk'
-                                  ? 'bg-amber-500'
-                                  : project.health === 'Delayed'
-                                    ? 'bg-rose-500'
-                                    : 'bg-emerald-500'
-                              }
-                            `}
-                            style={{ width: `${project.progress}%` }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="h-[61px] px-[20px] align-middle max-md:px-[16px]">
-                      <span
-                        className={`
-                          inline-flex
-                          items-center
-                          rounded-[8px]
-                          px-[10px]
-                          py-[4px]
-                          text-[10px]
-                          font-bold
-                          leading-[15px]
-                          whitespace-nowrap
-                          ${healthClasses[project.health]}
-                        `}
-                      >
-                        {project.health}
+                    <div>
+                      <span className="text-slate-400">
+                        Status:{' '}
                       </span>
-                    </td>
-                  </tr>
-                ))}
+                      {project.status}
+                    </div>
 
-                {projects.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="py-[55px] text-center">
-                      <p className="text-[13px] font-bold text-slate-600">
-                        No projects found
-                      </p>
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        Add a project to see it here.
-                      </p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    <div>
+                      <span className="text-slate-400">
+                        Start:{' '}
+                      </span>
+                      {formatProjectDate(
+                        project.startDate
+                      )}
+                    </div>
 
-        {/* CARDS — mobile */}
-        <div className="md:hidden space-y-3">
-          {projects.length === 0 ? (
-            <div className="rounded-[14px] border border-dashed border-slate-200 bg-white p-8 text-center">
-              <p className="text-[13px] font-bold text-slate-600">No projects found</p>
-              <p className="mt-1 text-[11px] text-slate-400">Add a project to see it here.</p>
-            </div>
-          ) : (
-            projects.map((project) => (
-              <div key={project.code} className="rounded-[14px] border border-slate-200/80 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="min-w-0">
-                    <p className="text-[10px] text-slate-400 font-mono mb-0.5">{project.code}</p>
-                    <p className="text-[13px] font-bold text-slate-900 leading-tight">{project.name}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{project.manager}</p>
+                    <div>
+                      <span className="text-slate-400">
+                        End:{' '}
+                      </span>
+                      {formatProjectDate(
+                        project.endDate
+                      )}
+                    </div>
+
                   </div>
-                  <span className={`shrink-0 inline-flex items-center rounded-[8px] px-[10px] py-[4px] text-[10px] font-bold whitespace-nowrap ${healthClasses[project.health]}`}>
-                    {project.health}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 mb-3">
-                  <div><span className="text-slate-400">Sprint: </span>{project.sprint}</div>
-                  <div><span className="text-slate-400">Status: </span>{project.status}</div>
-                  <div><span className="text-slate-400">Start: </span>{formatProjectDate(project.startDate)}</div>
-                  <div><span className="text-slate-400">End: </span>{formatProjectDate(project.endDate)}</div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-slate-400">Progress</span>
-                    <span className="text-[10px] font-semibold text-slate-600">{project.progress}%</span>
-                  </div>
-                  <div className="h-[5px] w-full overflow-hidden rounded-full bg-slate-100">
+
+                  <div>
+
                     <div
-                      className={`h-full rounded-full ${project.health === 'At Risk' ? 'bg-amber-500' : project.health === 'Delayed' ? 'bg-rose-500' : 'bg-emerald-500'}`}
-                      style={{ width: `${project.progress}%` }}
-                    />
+                      className="
+                        mb-1
+                        flex
+                        items-center
+                        justify-between
+                      "
+                    >
+                      <span
+                        className="
+                          text-[10px]
+                          text-slate-400
+                        "
+                      >
+                        Progress
+                      </span>
+
+                      <span
+                        className="
+                          text-[10px]
+                          font-semibold
+                          text-slate-600
+                        "
+                      >
+                        {project.progress}%
+                      </span>
+                    </div>
+
+                    <div
+                      className="
+                        h-[5px]
+                        w-full
+                        overflow-hidden
+                        rounded-full
+                        bg-slate-100
+                      "
+                    >
+                      <div
+                        className={`
+                          h-full
+                          rounded-full
+                          ${
+                            project.health ===
+                            'At Risk'
+                              ? 'bg-amber-500'
+                              : project.health ===
+                                  'Delayed'
+                                ? 'bg-rose-500'
+                                : 'bg-emerald-500'
+                          }
+                        `}
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            Math.max(
+                              0,
+                              project.progress
+                            )
+                          )}%`,
+                        }}
+                      />
+                    </div>
+
                   </div>
+
                 </div>
-              </div>
-            ))
-          )}
-        </div>
+
+              ))
+            )}
+
+          </div>
+        )}
+
       </div>
     </div>
   );
