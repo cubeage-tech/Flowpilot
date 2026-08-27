@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { X, Play, CheckCircle } from 'lucide-react';
+import demoVideo from '../assets/flowpilot demo.mp4';
 
 interface DemoModalProps {
   isOpen: boolean;
@@ -7,6 +8,7 @@ interface DemoModalProps {
 }
 
 export const DemoModal: React.FC<DemoModalProps> = ({ isOpen, onClose }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
   if (!isOpen) return null;
 
   return (
@@ -28,11 +30,25 @@ export const DemoModal: React.FC<DemoModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         <div className="mb-6">
-          <div className="h-[220px] bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl flex flex-col items-center justify-center gap-3 cursor-pointer shadow-lg group">
-            <div className="w-15 h-15 rounded-full bg-emerald-500 flex items-center justify-center pl-1 shadow-lg shadow-emerald-500/40 group-hover:scale-110 transition-transform">
-              <Play size={28} fill="#ffffff" color="#ffffff" />
-            </div>
-            <div className="text-white text-xs font-bold">Click to Play 2-Minute Walkthrough</div>
+          <div 
+            className="h-[220px] bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl flex flex-col items-center justify-center gap-3 cursor-pointer shadow-lg group relative overflow-hidden"
+            onClick={() => setIsPlaying(!isPlaying)}
+          >
+            {!isPlaying ? (
+              <>
+                <div className="w-15 h-15 rounded-full bg-emerald-500 flex items-center justify-center pl-1 shadow-lg shadow-emerald-500/40 group-hover:scale-110 transition-transform">
+                  <Play size={28} fill="#ffffff" color="#ffffff" />
+                </div>
+                <div className="text-white text-xs font-bold">Click to Play 2-Minute Walkthrough</div>
+              </>
+            ) : (
+              <video 
+                src={demoVideo}
+                controls
+                autoPlay
+                className="w-full h-full object-cover"
+              />
+            )}
           </div>
         </div>
 

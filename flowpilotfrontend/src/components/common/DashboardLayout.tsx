@@ -1,239 +1,490 @@
-import React, { useState } from 'react';
-import { 
-  LayoutGrid, 
-  Users, 
-  FolderKanban, 
-  Shield, 
-  FileText, 
-  Bell, 
-  Settings, 
-  LogOut, 
-  Search, 
-  Clock, 
-  AlertTriangle, 
-  Activity,
-  Flame,
-  Calendar,
-  Layers,
-  CheckSquare
-} from 'lucide-react';
-import { SuperAdminDashboard } from '../superadmin/SuperAdminDashboard';
-import { AdminDashboardView } from '../admin/AdminDashboardView';
-import { PMDashboardView } from '../pm/PMDashboardView';
-import { ScrumMasterDashboardView } from '../scrummaster/ScrumMasterDashboardView';
-import { DeveloperDashboardView } from '../developer/DeveloperDashboardView';
-import { QADashboardView } from '../qa/QADashboardView';
-import { ViewerDashboardView } from '../viewer/ViewerDashboardView';
+import React, { useState, useRef, useEffect } from 'react';
+import { LayoutGrid, Bell, Search, LogOut, User, Settings, HelpCircle, Power, Menu, X } from 'lucide-react';
 
-interface DashboardLayoutProps {
-  userRole?: string;
-  onLogout?: () => void;
+export interface NavItem {
+  name: string;
+  icon: React.ReactNode;
 }
 
-export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ userRole = 'Super Admin', onLogout }) => {
-  const [activeTab, setActiveTab] = useState('Overview');
-  const currentDate = 'Friday, 7 August 2026';
+export interface NotificationItem {
+  id: number;
+  title: string;
+  message: string;
+  time: string;
+  unread: boolean;
+  color?: string;
+}
 
-  const getRoleConfig = (role: string) => {
-    switch (role) {
-      case 'Super Admin':
-        return { label: 'SUPER ADMINISTRATOR', color: 'border-rose-500/30 bg-rose-500/10 text-rose-400', name: 'Rajeev Kumar', dept: 'Leadership', avatar: 'RK', avatarBg: 'bg-rose-500' };
-      case 'Admin':
-        return { label: 'SYSTEM ADMINISTRATOR', color: 'border-amber-500/30 bg-amber-500/10 text-amber-400', name: 'Nisha Agarwal', dept: 'Operations', avatar: 'NA', avatarBg: 'bg-amber-500' };
-      case 'Project Manager':
-        return { label: 'SENIOR PROJECT MANAGER', color: 'border-purple-500/30 bg-purple-500/10 text-purple-400', name: 'Arjun Shah', dept: 'Product', avatar: 'AS', avatarBg: 'bg-purple-500' };
-      case 'Scrum Master':
-        return { label: 'SCRUM MASTER', color: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400', name: 'Aryan Kapoor', dept: 'Engineering', avatar: 'AK', avatarBg: 'bg-emerald-500' };
-      case 'QA Engineer':
-        return { label: 'QA ENGINEER', color: 'border-teal-500/30 bg-teal-500/10 text-teal-400', name: 'Priya Rajan', dept: 'Quality', avatar: 'PR', avatarBg: 'bg-teal-500' };
-      case 'Viewer':
-        return { label: 'EXECUTIVE VIEWER', color: 'border-slate-500/30 bg-slate-500/10 text-slate-300', name: 'Vikram Jain', dept: 'Management', avatar: 'VJ', avatarBg: 'bg-slate-600' };
-      case 'Developer':
-      default:
-        return { label: 'SENIOR FRONTEND DEVELOPER', color: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400', name: 'Sneha Rao', dept: 'Engineering', avatar: 'SR', avatarBg: 'bg-teal-500' };
+export interface ProfileConfig {
+  name: string;
+  email: string;
+  roleLabel: string;
+  roleBadgeColor: string;
+}
+
+interface RoleConfig {
+  label: string;
+  color: string;
+  name: string;
+  dept: string;
+  avatar: string;
+  avatarBg: string;
+}
+
+interface DashboardLayoutProps {
+  navItems: NavItem[];
+  roleConfig: RoleConfig;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+  pageTitle: string;
+  onLogout?: () => void;
+  notifications: NotificationItem[];
+  profileConfig: ProfileConfig;
+  children: React.ReactNode;
+}
+
+const currentDate = 'Thursday, 13 August 2026';
+
+export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
+  navItems,
+  roleConfig,
+  activeTab,
+  onTabChange,
+  pageTitle,
+  onLogout,
+  notifications: initialNotifications,
+  profileConfig,
+  children,
+}) => {
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [notifications, setNotifications] = useState(initialNotifications);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const notifRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // Get the currently logged-in user's name and email
+  const loggedInName = localStorage.getItem('name') || roleConfig.name;
+  const loggedInEmail = localStorage.getItem('email') || profileConfig.email;
+
+  // Generate initials from the logged-in user's name
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/);
+
+    if (parts.length === 1) {
+      return parts[0].substring(0, 2).toUpperCase();
     }
+
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  const roleConfig = getRoleConfig(userRole);
+  const loggedInAvatar = getInitials(loggedInName);
 
-  const getNavItems = (role: string) => {
-    switch (role) {
-      case 'Super Admin':
-        return [
-          { name: 'Overview', icon: <LayoutGrid size={18} /> },
-          { name: 'User Management', icon: <Users size={18} /> },
-          { name: 'Departments', icon: <FolderKanban size={18} /> },
-          { name: 'Roles & Permissions', icon: <Shield size={18} /> },
-          { name: 'All Projects', icon: <Layers size={18} /> },
-          { name: 'Audit Logs', icon: <FileText size={18} /> },
-          { name: 'System Settings', icon: <Settings size={18} /> }
-        ];
-      case 'Admin':
-        return [
-          { name: 'Dashboard', icon: <LayoutGrid size={18} /> },
-          { name: 'Users', icon: <Users size={18} /> },
-          { name: 'Departments', icon: <FolderKanban size={18} /> },
-          { name: 'Projects', icon: <Layers size={18} /> },
-          { name: 'Reports', icon: <FileText size={18} /> },
-          { name: 'Notifications', icon: <Bell size={18} /> }
-        ];
-      case 'Project Manager':
-        return [
-          { name: 'Dashboard', icon: <LayoutGrid size={18} /> },
-          { name: 'My Projects', icon: <Layers size={18} /> },
-          { name: 'Sprint Planning', icon: <Flame size={18} /> },
-          { name: 'Task Board', icon: <CheckSquare size={18} /> },
-          { name: 'Team Workload', icon: <Users size={18} /> },
-          { name: 'Analytics & Reports', icon: <Activity size={18} /> }
-        ];
-      case 'Scrum Master':
-        return [
-          { name: 'Sprint Overview', icon: <LayoutGrid size={18} /> },
-          { name: 'Scrum Board', icon: <CheckSquare size={18} /> },
-          { name: 'Burndown & Velocity', icon: <Activity size={18} /> },
-          { name: 'Team & Standups', icon: <Users size={18} /> },
-          { name: 'Retrospective', icon: <Calendar size={18} /> }
-        ];
-      case 'QA Engineer':
-        return [
-          { name: 'QA Dashboard', icon: <LayoutGrid size={18} /> },
-          { name: 'My Test Tasks', icon: <CheckSquare size={18} /> },
-          { name: 'Bug Reports', icon: <AlertTriangle size={18} /> },
-          { name: 'Test Coverage', icon: <Activity size={18} /> },
-          { name: 'Quality Reports', icon: <FileText size={18} /> }
-        ];
-      case 'Viewer':
-        return [
-          { name: 'Projects', icon: <Layers size={18} /> },
-          { name: 'Sprint Status', icon: <Flame size={18} /> },
-          { name: 'Reports', icon: <FileText size={18} /> }
-        ];
-      case 'Developer':
-      default:
-        return [
-          { name: 'My Dashboard', icon: <LayoutGrid size={18} /> },
-          { name: 'My Tasks', icon: <CheckSquare size={18} /> },
-          { name: 'Sprint Board', icon: <Layers size={18} /> },
-          { name: 'Time Log', icon: <Clock size={18} /> },
-          { name: 'Mentions', icon: <Bell size={18} /> }
-        ];
-    }
+  // Use logged-in user's name and initials everywhere,
+  // while keeping the role and department from the existing roleConfig.
+  const dynamicRoleConfig = {
+    ...roleConfig,
+    name: loggedInName,
+    avatar: loggedInAvatar,
   };
 
-  const navItems = getNavItems(userRole);
+  // Use logged-in user's name and email in the profile popup.
+  const dynamicProfileConfig = {
+    ...profileConfig,
+    name: loggedInName,
+    email: loggedInEmail,
+  };
 
-  return (
-    <div className="min-h-screen bg-[#f8fafc] flex text-slate-800 font-sans">
-      {/* Shared Dark Sidebar */}
-      <aside className="w-64 bg-[#090d16] text-white flex flex-col justify-between shrink-0 p-5 border-r border-slate-800/60">
-        <div>
-          <div className="flex items-center gap-2.5 mb-6 px-2">
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) setShowNotifications(false);
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) setShowProfile(false);
+    };
+
+    document.addEventListener('mousedown', handler);
+
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Body scroll lock when mobile sidebar is open
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [sidebarOpen]);
+
+  // Close sidebar on Escape
+  useEffect(() => {
+    if (!sidebarOpen) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+
+    document.addEventListener('keydown', onKey);
+
+    return () => document.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
+
+  const handleTabChange = (tab: string) => {
+    onTabChange(tab);
+    setSidebarOpen(false);
+  };
+
+  const SidebarContent = (
+    <aside className="h-full w-64 bg-[#090d16] text-white flex flex-col justify-between p-5 border-r border-slate-800/60">
+      <div className="min-h-0 flex flex-col">
+
+        {/* LOGO */}
+        <div className="flex items-center justify-between mb-6 px-2 shrink-0">
+          <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-emerald-500 flex items-center justify-center text-white font-bold shadow-md shadow-emerald-500/20">
               <LayoutGrid size={18} />
             </div>
+
             <div>
-              <div className="font-extrabold text-base tracking-tight leading-none text-white">Flowpilot</div>
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">PLATFORM V2.0</div>
+              <div className="font-extrabold text-base tracking-tight leading-none text-white">
+                Flowpilot
+              </div>
+
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
+                PLATFORM V2.0
+              </div>
             </div>
           </div>
 
-          <div className="mb-6 px-2">
-            <span className={`inline-block w-full text-center text-[10px] font-black tracking-wider px-3 py-1.5 rounded-lg border ${roleConfig.color}`}>
-              ● {roleConfig.label}
-            </span>
-          </div>
-
-          <nav className="flex flex-col gap-1">
-            {navItems.map((item, idx) => {
-              const isActive = activeTab === item.name || idx === 0;
-              return (
-                <button
-                  key={item.name}
-                  onClick={() => setActiveTab(item.name)}
-                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-white/10 text-white shadow-xs border border-white/10'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                  }`}
-                >
-                  <span className={isActive ? 'text-emerald-400' : 'text-slate-400'}>{item.icon}</span>
-                  <span>{item.name}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between px-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className={`w-8 h-8 rounded-full ${roleConfig.avatarBg} text-white flex items-center justify-center font-extrabold text-xs shrink-0 shadow-sm`}>
-              {roleConfig.avatar}
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-white truncate">{roleConfig.name}</div>
-              <div className="text-[10px] text-slate-400 truncate">{roleConfig.dept}</div>
-            </div>
-          </div>
-          <button 
-            onClick={onLogout}
-            title="Log out"
-            className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer"
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden text-slate-400 hover:text-white transition-colors p-1"
+            aria-label="Close menu"
           >
-            <LogOut size={14} />
+            <X size={20} />
           </button>
         </div>
-      </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <header className="bg-white border-b border-slate-200/80 px-8 py-4 flex items-center justify-between sticky top-0 z-20 shadow-2xs">
-          <div>
-            <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
-              {userRole === 'Super Admin' && 'System Overview'}
-              {userRole === 'Admin' && 'Admin Dashboard'}
-              {userRole === 'Project Manager' && 'PM Dashboard'}
-              {userRole === 'Scrum Master' && 'Sprint Overview'}
-              {userRole === 'QA Engineer' && 'QA Dashboard'}
-              {userRole === 'Viewer' && 'Projects Overview'}
-              {userRole === 'Developer' && 'My Dashboard'}
-            </h1>
-            <div className="text-xs text-slate-400 font-medium">{currentDate}</div>
+        {/* ROLE BADGE */}
+        <div className="mb-6 px-2 shrink-0">
+          <span
+            className={`inline-block w-full text-center text-[10px] font-black tracking-wider px-3 py-1.5 rounded-lg border ${dynamicRoleConfig.color}`}
+          >
+            ● {dynamicRoleConfig.label}
+          </span>
+        </div>
+
+        {/* NAVIGATION */}
+        <nav className="flex flex-col gap-1 overflow-y-auto pr-1">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.name;
+
+            return (
+              <button
+                key={item.name}
+                type="button"
+                onClick={() => handleTabChange(item.name)}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer text-left shrink-0 ${
+                  isActive
+                    ? 'bg-white/10 text-white shadow-xs border border-white/10'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`}
+              >
+                <span className={isActive ? 'text-emerald-400' : 'text-slate-400'}>
+                  {item.icon}
+                </span>
+
+                <span>{item.name}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* USER AREA */}
+      <div className="pt-4 mt-4 border-t border-slate-800/80 flex items-center justify-between px-2 shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+
+          <div
+            className={`w-8 h-8 rounded-full ${dynamicRoleConfig.avatarBg} text-white flex items-center justify-center font-extrabold text-xs shrink-0 shadow-sm`}
+          >
+            {dynamicRoleConfig.avatar}
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="relative w-64 hidden sm:block">
-              <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-white truncate">
+              {dynamicRoleConfig.name}
+            </div>
+
+            <div className="text-[10px] text-slate-400 truncate">
+              {dynamicRoleConfig.dept}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          title="Log out"
+          className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+        >
+          <LogOut size={14} />
+        </button>
+      </div>
+    </aside>
+  );
+
+  return (
+    <div className="h-screen w-full overflow-hidden bg-[#f8fafc] text-slate-800 font-sans flex">
+
+      {/* ── DESKTOP SIDEBAR ── */}
+      <div className="hidden lg:flex h-screen w-64 shrink-0 flex-col">
+        {SidebarContent}
+      </div>
+
+      {/* ── MOBILE SIDEBAR OVERLAY ── */}
+      {sidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-50 flex"
+          role="dialog"
+          aria-modal="true"
+        >
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setSidebarOpen(false)}
+          />
+
+          {/* Drawer */}
+          <div className="relative z-10 h-full w-[280px] max-w-[85vw] flex flex-col">
+            {SidebarContent}
+          </div>
+        </div>
+      )}
+
+      <main className="flex-1 min-w-0 min-h-0 h-screen overflow-y-auto overflow-x-hidden bg-[#f8fafc]">
+
+        {/* HEADER */}
+        <header className="h-[60px] md:h-[72px] bg-white border-b border-slate-200/80 px-3 sm:px-5 md:px-8 flex items-center justify-between sticky top-0 z-30 shadow-sm">
+
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+
+            {/* Hamburger — mobile/tablet only */}
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden w-9 h-9 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
+              aria-label="Open menu"
+            >
+              <Menu size={18} />
+            </button>
+
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base md:text-xl font-extrabold text-slate-900 tracking-tight truncate">
+                {pageTitle}
+              </h1>
+
+              <div className="text-[10px] md:text-xs text-slate-400 font-medium hidden sm:block">
+                {currentDate}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 shrink-0">
+
+            {/* SEARCH — hidden on mobile */}
+            <div className="relative w-40 md:w-56 hidden sm:block">
+              <Search
+                size={14}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
                 type="text"
                 placeholder="Search..."
                 className="w-full bg-slate-50 border border-slate-200/80 rounded-full pl-9 pr-4 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
 
-            <div className="relative">
-              <button className="w-9 h-9 rounded-full bg-slate-50 border border-slate-200/80 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer">
+            {/* NOTIFICATIONS */}
+            <div className="relative" ref={notifRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNotifications((p) => !p);
+                  setShowProfile(false);
+                }}
+                aria-label="Notifications"
+                className="relative w-9 h-9 rounded-full bg-slate-50 border border-slate-200/80 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
                 <Bell size={16} />
+
+                {notifications.some((n) => n.unread) && (
+                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white" />
+                )}
               </button>
-              <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white"></span>
+
+              {showNotifications && (
+                <div className="absolute right-0 top-11 w-[calc(100vw-24px)] max-w-[320px] sm:w-80 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
+
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">
+                        Notifications
+                      </h3>
+
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {notifications.filter(n => n.unread).length} unread
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNotifications((prev) =>
+                          prev.map((n) => ({ ...n, unread: false }))
+                        )
+                      }
+                      className="text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 cursor-pointer"
+                    >
+                      Mark all read
+                    </button>
+                  </div>
+
+                  <div className="max-h-64 overflow-y-auto">
+                    {notifications.map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() =>
+                          setNotifications((prev) =>
+                            prev.map((item) =>
+                              item.id === n.id
+                                ? { ...item, unread: false }
+                                : item
+                            )
+                          )
+                        }
+                        className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${
+                          n.unread ? 'bg-emerald-50/40' : 'bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+
+                          <div
+                            className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
+                              n.color ??
+                              (n.unread
+                                ? 'bg-emerald-500'
+                                : 'bg-slate-300')
+                            }`}
+                          />
+
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-900">
+                              {n.title}
+                            </div>
+
+                            <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">
+                              {n.message}
+                            </div>
+
+                            <div className="text-[10px] text-slate-400 mt-1">
+                              {n.time}
+                            </div>
+                          </div>
+
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className={`w-9 h-9 rounded-full ${roleConfig.avatarBg} text-white flex items-center justify-center font-extrabold text-xs shadow-sm cursor-pointer`}>
-              {roleConfig.avatar}
+            {/* PROFILE AVATAR */}
+            <div className="relative" ref={profileRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowProfile((p) => !p);
+                  setShowNotifications(false);
+                }}
+                className={`w-9 h-9 rounded-full ${dynamicRoleConfig.avatarBg} text-white flex items-center justify-center font-extrabold text-xs cursor-pointer hover:opacity-90 transition-opacity`}
+              >
+                {dynamicRoleConfig.avatar}
+              </button>
+
+              {showProfile && (
+                <div className="absolute right-0 top-11 w-[calc(100vw-24px)] max-w-[260px] sm:w-72 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden">
+
+                  <div className="px-5 py-4 border-b border-slate-100">
+                    <div className="font-bold text-slate-900 text-sm">
+                      {dynamicProfileConfig.name}
+                    </div>
+
+                    <div className="text-xs text-slate-400 mt-0.5 truncate">
+                      {dynamicProfileConfig.email}
+                    </div>
+
+                    <span
+                      className={`inline-block mt-2 text-[10px] font-bold px-2.5 py-1 rounded-full ${dynamicProfileConfig.roleBadgeColor}`}
+                    >
+                      {dynamicProfileConfig.roleLabel}
+                    </span>
+                  </div>
+
+                  <div className="py-2">
+                    {[
+                      { icon: <User size={15} />, label: 'My Profile' },
+                      { icon: <Settings size={15} />, label: 'Settings' },
+                      { icon: <HelpCircle size={15} />, label: 'Help & Support' },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                      >
+                        <span className="text-slate-400">
+                          {item.icon}
+                        </span>
+
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-slate-100 py-2">
+                    <button
+                      type="button"
+                      onClick={onLogout}
+                      className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+                    >
+                      <Power size={15} />
+                      Sign Out
+                    </button>
+                  </div>
+
+                </div>
+              )}
             </div>
           </div>
         </header>
 
-        {/* Dynamic Role Dashboard Content rendered from modular components */}
-        <div className="p-8 max-w-[1400px] w-full mx-auto flex-1 space-y-8">
-          {userRole === 'Super Admin' && <SuperAdminDashboard />}
-          {userRole === 'Admin' && <AdminDashboardView />}
-          {userRole === 'Project Manager' && <PMDashboardView />}
-          {userRole === 'Scrum Master' && <ScrumMasterDashboardView />}
-          {userRole === 'Developer' && <DeveloperDashboardView />}
-          {userRole === 'QA Engineer' && <QADashboardView />}
-          {userRole === 'Viewer' && <ViewerDashboardView />}
+        {/* PAGE CONTENT */}
+        <div className="p-3 sm:p-5 md:p-8 max-w-[1400px] w-full mx-auto space-y-4 md:space-y-6">
+          {children}
         </div>
+
       </main>
     </div>
   );
 };
+
+export default DashboardLayout;

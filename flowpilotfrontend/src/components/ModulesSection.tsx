@@ -84,7 +84,7 @@ export const ModulesSection: React.FC = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-6">
         {modules.map((m) => (
           <div key={m.num} className="bg-white/85 backdrop-blur-md border border-white/90 p-6 rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col justify-between">
             <div>
