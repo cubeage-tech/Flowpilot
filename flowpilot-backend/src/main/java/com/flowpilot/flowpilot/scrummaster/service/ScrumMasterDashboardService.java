@@ -55,16 +55,24 @@ public class ScrumMasterDashboardService {
 
     public Map<String, Object> getDashboard() {
 
-        ScrumSprint sprint = sprintRepository
-                .findFirstByStatus(ScrumSprint.Status.ACTIVE)
-                .orElseThrow(() -> new ScrumNotFoundException(
-                        "No active sprint. Create one and start it."));
-
+        java.util.Optional<ScrumSprint> sprintOpt = sprintRepository.findCurrentOrLatest();
         Map<String, Object> payload = new LinkedHashMap<>();
+
+        if (sprintOpt.isEmpty()) {
+            payload.put("sprint", null);
+            payload.put("kpis", Map.of());
+            payload.put("ceremonies", List.of());
+            payload.put("stuckTasks", List.of());
+            payload.put("hasSprints", false);
+            return payload;
+        }
+
+        ScrumSprint sprint = sprintOpt.get();
         payload.put("sprint", sprintService.toResponse(sprint));
         payload.put("kpis", analyticsService.buildKpis(sprint));
         payload.put("ceremonies", ceremonies(sprint));
         payload.put("stuckTasks", stuckTasks(sprint));
+        payload.put("hasSprints", true);
 
         return payload;
     }
@@ -76,8 +84,7 @@ public class ScrumMasterDashboardService {
      * are not meant to be moving yet.
      */
     private List<ScrumTaskDto.Card> stuckTasks(ScrumSprint sprint) {
-
-        List<ScrumTaskDto.Card> stuck = new ArrayList<>();
+        List<ScrumTask> idleTasks = new ArrayList<>();
 
         for (ScrumTask task : taskRepository
                 .findBySprintIdOrderByStatusAscTaskKeyAsc(sprint.getId())) {
@@ -87,11 +94,11 @@ public class ScrumMasterDashboardService {
                     && task.getStatus() != ScrumTask.Status.BACKLOG;
 
             if (idle && shouldBeMoving) {
-                stuck.add(taskService.toCard(task));
+                idleTasks.add(task);
             }
         }
 
-        return stuck;
+        return taskService.toCards(idleTasks);
     }
 
 

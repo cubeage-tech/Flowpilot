@@ -54,6 +54,7 @@ public class PMProjectsService {
     ========================================================= */
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public PMProjectDto getProject(Long id) {
 
         PMProject project =
@@ -225,6 +226,7 @@ public class PMProjectsService {
     ========================================================= */
 
     @Transactional
+    @SuppressWarnings("null")
     public PMProjectDto updateProject(
             Long id,
             PMProjectDto dto) {
@@ -328,6 +330,7 @@ public class PMProjectsService {
     ========================================================= */
 
     @Transactional
+    @SuppressWarnings("null")
     public void deleteProject(Long id) {
 
         if (!projectRepository.existsById(id)) {

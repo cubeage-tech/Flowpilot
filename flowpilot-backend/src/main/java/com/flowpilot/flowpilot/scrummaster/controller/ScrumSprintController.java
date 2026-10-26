@@ -46,11 +46,14 @@ public class ScrumSprintController {
     // All sprints, newest first
     //
     // GET /api/scrummaster/sprints
+    // GET /api/scrummaster/sprints?projectId=17
     // ============================================
     @GetMapping
-    public ResponseEntity<List<ScrumSprintDto.Response>> getSprints() {
+    public ResponseEntity<List<ScrumSprintDto.Response>> getSprints(
+            @RequestParam(required = false) Long projectId
+    ) {
 
-        return ResponseEntity.ok(sprintService.listSprints());
+        return ResponseEntity.ok(sprintService.listSprints(projectId));
     }
 
 

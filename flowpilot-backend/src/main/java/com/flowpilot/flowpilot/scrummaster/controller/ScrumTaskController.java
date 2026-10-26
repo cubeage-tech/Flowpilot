@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.flowpilot.flowpilot.scrummaster.dto.ScrumTaskDto;
@@ -67,14 +68,27 @@ public class ScrumTaskController {
 
     // ============================================
     // GET
+    // Individual task by ID
+    //
+    // GET /api/scrummaster/tasks/{taskId}
+    // ============================================
+    @GetMapping("/{taskId}")
+    public ResponseEntity<ScrumTaskDto.Card> getTask(@PathVariable Long taskId) {
+        return ResponseEntity.ok(taskService.getTask(taskId));
+    }
+
+
+    // ============================================
+    // GET
     // Backlog — tasks not in any sprint
     //
     // GET /api/scrummaster/tasks/backlog
     // ============================================
     @GetMapping("/backlog")
-    public ResponseEntity<List<ScrumTaskDto.Card>> getBacklog() {
-
-        return ResponseEntity.ok(taskService.listBacklog());
+    public ResponseEntity<List<ScrumTaskDto.Card>> getBacklog(
+            @RequestParam(required = false) Long projectId
+    ) {
+        return ResponseEntity.ok(taskService.listBacklog(projectId));
     }
 
 

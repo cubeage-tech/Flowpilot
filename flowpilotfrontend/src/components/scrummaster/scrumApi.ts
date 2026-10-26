@@ -28,7 +28,33 @@ const readError = async (response: Response): Promise<string> => {
   }
 };
 
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const apiCache = new Map<string, CacheEntry<unknown>>();
+const CACHE_TTL_MS = 6000; // 6 seconds instant cache for seamless tab switching
+
+/** Instantly flushes the cache whenever cards, sprints, or retro items are mutated. */
+export const clearScrumApiCache = () => {
+  apiCache.clear();
+};
+
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  const method = (init?.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+
+  // Any mutation (POST, PATCH, DELETE, PUT) instantly evicts the cache
+  if (!isGet) {
+    clearScrumApiCache();
+  } else {
+    const cached = apiCache.get(path);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return cached.data as T;
+    }
+  }
+
   let response: Response;
 
   try {
@@ -45,7 +71,11 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const result = (await response.json()) as T;
+  if (isGet) {
+    apiCache.set(path, { data: result, timestamp: Date.now() });
+  }
+  return result;
 };
 
 type QueryValue = string | number | boolean | undefined | null;
@@ -86,8 +116,6 @@ export type TaskStatus = (typeof TASK_STATUSES)[number];
  * task becomes unreachable by losing its column.
  */
 export const BOARD_COLUMNS: readonly TaskStatus[] = [
-  'BACKLOG',
-  'SPRINT_READY',
   'TODO',
   'IN_PROGRESS',
   'TESTING',
@@ -131,6 +159,7 @@ export interface Member {
   email: string;
   role: string;
   initials: string;
+  department?: string | null;
 }
 
 export interface Card {
@@ -149,12 +178,27 @@ export interface Card {
   assigneeId: number | null;
   assigneeName: string | null;
   assigneeInitials: string;
+  assigneeDepartment?: string | null;
+  assigneeEmail?: string | null;
+  assigneeRole?: string | null;
   reporterId: number | null;
   reporterName: string | null;
   sprintId: number | null;
   daysInColumn: number;
   stuck: boolean;
   overdue: boolean;
+  subtaskCount?: number;
+  completedSubtaskCount?: number;
+}
+
+export interface Subtask {
+  id: number;
+  taskId: number;
+  title: string;
+  completed: boolean;
+  assigneeId: number | null;
+  assigneeName: string | null;
+  assigneeInitials: string;
 }
 
 export interface BoardColumn {
@@ -168,6 +212,9 @@ export interface BoardColumn {
 }
 
 export interface Board {
+  /** The project this board is scoped to; null when the sprint has no project. */
+  projectId: number | null;
+  projectName: string | null;
   sprintId: number;
   sprintName: string;
   sprintStatus: SprintStatus;
@@ -396,6 +443,11 @@ export const deleteTask = (taskId: number) =>
 // ============================================
 
 export interface BoardFilters {
+  /**
+   * Outer scope, not a filter: it decides which sprint is shown when no sprint
+   * is named, and narrows the assignee list to that project's team.
+   */
+  projectId?: number;
   sprintId?: number;
   assigneeId?: number;
   priority?: Priority;
@@ -404,8 +456,13 @@ export interface BoardFilters {
   unassigned?: boolean;
 }
 
-export const fetchBoard = (filters: BoardFilters = {}) =>
-  request<Board>(`/board${query(filters)}`);
+export const fetchBoard = (filters: BoardFilters = {}) => {
+  const sanitized: BoardFilters = { ...filters };
+  if (sanitized.unassigned && sanitized.assigneeId !== undefined) {
+    delete sanitized.assigneeId;
+  }
+  return request<Board>(`/board${query(sanitized)}`);
+};
 
 export const moveTask = (taskId: number, status: TaskStatus, blockedReason?: string) =>
   request<Card>(`/board/tasks/${taskId}/status`, {
@@ -415,8 +472,16 @@ export const moveTask = (taskId: number, status: TaskStatus, blockedReason?: str
 
 export const fetchWipLimits = () => request<Record<string, number>>('/board/wip-limits');
 
-export const setWipLimit = (status: TaskStatus, limit: number | null) =>
-  request<Board>('/board/wip-limits', {
+/**
+ * The scope is echoed back in the query so the board this returns is the one
+ * the user is looking at, rather than whichever sprint happens to be active.
+ */
+export const setWipLimit = (
+  status: TaskStatus,
+  limit: number | null,
+  scope: Pick<BoardFilters, 'projectId' | 'sprintId'> = {}
+) =>
+  request<Board>(`/board/wip-limits${query(scope)}`, {
     method: 'PUT',
     body: JSON.stringify({ status, limit })
   });
@@ -425,7 +490,9 @@ export const setWipLimit = (status: TaskStatus, limit: number | null) =>
 // SPRINTS
 // ============================================
 
-export const fetchSprints = () => request<Sprint[]>('/sprints');
+/** Sprints for one project, or every sprint when no project is given. */
+export const fetchSprints = (projectId?: number) =>
+  request<Sprint[]>(`/sprints${query({ projectId })}`);
 
 export const fetchActiveSprint = () => request<Sprint>('/sprints/active');
 
@@ -491,13 +558,16 @@ export const deleteStandup = (standupId: number) =>
 export const fetchRetrospective = (sprintId?: number) =>
   request<Retrospective>(`/retrospective${query({ sprintId })}`);
 
-export const createRetroItem = (body: {
-  kind: RetroKind;
-  text: string;
-  ownerId?: number | null;
-  dueLabel?: string | null;
-  dueDate?: string | null;
-}) => request<RetroItem>('/retrospective', { method: 'POST', body: JSON.stringify(body) });
+export const createRetroItem = (
+  body: {
+    kind: RetroKind;
+    text: string;
+    ownerId?: number | null;
+    dueLabel?: string | null;
+    dueDate?: string | null;
+  },
+  sprintId?: number
+) => request<RetroItem>(`/retrospective${query({ sprintId })}`, { method: 'POST', body: JSON.stringify(body) });
 
 export const updateRetroItem = (
   itemId: number,
@@ -697,3 +767,86 @@ export const deleteAttachment = (attachmentId: number) =>
 /** Absolute URL for an attachment, since downloads leave the API client. */
 export const attachmentUrl = (attachment: Attachment): string =>
   `http://localhost:8080${attachment.downloadUrl}`;
+
+/**
+ * Recognises expected "no sprint yet" 404 responses across Scrum Master modules.
+ * This is the normal initial state for new projects/teams, not a fatal crash.
+ */
+export const isNoActiveSprint = (message: string): boolean => {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes('no active sprint') ||
+    m.includes('no sprint') ||
+    m.includes('has no sprint') ||
+    m.includes('sprint not found') ||
+    m.includes('was not found') ||
+    m.includes('sprints yet')
+  );
+};
+
+// ============================================
+// SUBTASKS
+// ============================================
+
+export const fetchSubtasks = (taskId: number) =>
+  request<Subtask[]>(`/subtasks/task/${taskId}`);
+
+export const createSubtask = (taskId: number, title: string, assigneeId?: number | null) =>
+  request<Subtask>(`/subtasks/task/${taskId}`, {
+    method: 'POST',
+    body: JSON.stringify({ title, assigneeId: assigneeId ?? null })
+  });
+
+export const updateSubtask = (
+  subtaskId: number,
+  body: { title?: string; completed?: boolean; assigneeId?: number | null; unassign?: boolean }
+) =>
+  request<Subtask>(`/subtasks/${subtaskId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body)
+  });
+
+export const toggleSubtask = (subtaskId: number) =>
+  request<Subtask>(`/subtasks/${subtaskId}/toggle`, {
+    method: 'PATCH'
+  });
+
+export const deleteSubtask = (subtaskId: number) =>
+  request<{ success: boolean }>(`/subtasks/${subtaskId}`, {
+    method: 'DELETE'
+  });
+
+// ============================================
+// REQUIREMENTS DOCUMENTS
+// ============================================
+
+export interface RequirementDoc {
+  id: number;
+  projectId?: number | null;
+  projectName?: string;
+  title: string;
+  docType: string;
+  content: string;
+  fileUrl?: string | null;
+  version: string;
+  status: string;
+  createdBy: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const fetchRequirementDocs = (projectId?: number) =>
+  request<RequirementDoc[]>(`/requirements${query({ projectId })}`);
+
+export const createRequirementDoc = (body: Partial<RequirementDoc>) =>
+  request<RequirementDoc>('/requirements', { method: 'POST', body: JSON.stringify(body) });
+
+export const updateRequirementDoc = (id: number, body: Partial<RequirementDoc>) =>
+  request<RequirementDoc>(`/requirements/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+
+export const deleteRequirementDoc = (id: number) =>
+  request<void>(`/requirements/${id}`, { method: 'DELETE' });
+
+
+

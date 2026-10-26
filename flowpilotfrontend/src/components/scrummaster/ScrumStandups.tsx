@@ -11,6 +11,7 @@ import { TYPE, SURFACE, STATUS, FIELD } from './scrumUI';
 import {
   deleteStandup,
   fetchStandups,
+  isNoActiveSprint,
   saveStandup,
   type Member,
   type StandupEntry,
@@ -46,15 +47,13 @@ interface Draft {
 const emptyDraft: Draft = { memberId: '', yesterday: '', today: '', blocker: '' };
 
 
-/**
- * The API client throws the backend's message rather than a status code, so the
- * "no active sprint" 404 is recognised by its text. It is the normal state for
- * a new team, not a fault, so it must not render as an error.
- */
-const isNoActiveSprint = (message: string): boolean =>
-  message.toLowerCase().includes('no active sprint');
 
-export const ScrumStandups: React.FC = () => {
+
+interface ScrumStandupsProps {
+  readOnly?: boolean;
+}
+
+export const ScrumStandups: React.FC<ScrumStandupsProps> = ({ readOnly = false }) => {
   const [data, setData] = useState<Standups | null>(null);
   const [date, setDate] = useState(todayIso());
   const [loading, setLoading] = useState(true);
@@ -345,23 +344,27 @@ export const ScrumStandups: React.FC = () => {
                       </span>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={() => chooseMember(String(entry.memberId))}
-                      className={`${TYPE.meta} ${FIELD.button} ${FIELD.secondary}`}
-                    >
-                      Edit
-                    </button>
+                    {!readOnly && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => chooseMember(String(entry.memberId))}
+                          className={`${TYPE.meta} ${FIELD.button} ${FIELD.secondary}`}
+                        >
+                          Edit
+                        </button>
 
-                    <button
-                      type="button"
-                      disabled={busyId === entry.id}
-                      onClick={() => void handleDelete(entry)}
-                      aria-label={`Remove ${entry.memberName ?? 'member'}'s entry`}
-                      className={`${TYPE.meta} ${FIELD.button} ${FIELD.danger}`}
-                    >
-                      <FiTrash2 size={13} aria-hidden="true" />
-                    </button>
+                        <button
+                          type="button"
+                          disabled={busyId === entry.id}
+                          onClick={() => void handleDelete(entry)}
+                          aria-label={`Remove ${entry.memberName ?? 'member'}'s entry`}
+                          className={`${TYPE.meta} ${FIELD.button} ${FIELD.danger}`}
+                        >
+                          <FiTrash2 size={13} aria-hidden="true" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </header>
 
@@ -422,116 +425,119 @@ export const ScrumStandups: React.FC = () => {
       )}
 
       {/* Record or edit an entry */}
-      <form onSubmit={handleSave} className={`${SURFACE.card} ${SURFACE.pad} space-y-3`}>
-        <div className="flex items-center gap-2">
-          <FiUserPlus size={14} className="text-slate-400" aria-hidden="true" />
-          <h3 className={`${TYPE.title} text-slate-900`}>
-            {draft.memberId && entryByMember.has(Number(draft.memberId))
-              ? 'Update entry'
-              : 'Add an entry'}
-          </h3>
-        </div>
-
-        <div>
-          <label className={`${TYPE.eyebrow} text-slate-400 block mb-1.5`} htmlFor="standup-member">
-            Who is speaking
-          </label>
-          <select
-            id="standup-member"
-            value={draft.memberId}
-            onChange={(event) => chooseMember(event.target.value)}
-            className={`${TYPE.body} ${FIELD.input} cursor-pointer`}
-          >
-            <option value="">Choose a member</option>
-            {members.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name ?? member.email}
-                {entryByMember.has(member.id) ? ' — already recorded' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className={`${TYPE.eyebrow} text-slate-400 block mb-1.5`} htmlFor="standup-yesterday">
-              Yesterday
-            </label>
-            <textarea
-              id="standup-yesterday"
-              rows={2}
-              value={draft.yesterday}
-              onChange={(event) => setDraft({ ...draft, yesterday: event.target.value })}
-              placeholder="What they finished"
-              className={`${TYPE.body} ${FIELD.input}`}
-            />
+      {!readOnly && (
+        <form onSubmit={handleSave} className={`${SURFACE.card} ${SURFACE.pad} space-y-3`}>
+          <div className="flex items-center gap-2">
+            <FiUserPlus size={14} className="text-slate-400" aria-hidden="true" />
+            <h3 className={`${TYPE.title} text-slate-900`}>
+              {draft.memberId && entryByMember.has(Number(draft.memberId))
+                ? 'Update entry'
+                : 'Add an entry'}
+            </h3>
           </div>
 
           <div>
-            <label className={`${TYPE.eyebrow} text-slate-400 block mb-1.5`} htmlFor="standup-today">
-              Today
+            <label className={`${TYPE.eyebrow} text-slate-400 block mb-1.5`} htmlFor="standup-member">
+              Who is speaking
             </label>
-            <textarea
-              id="standup-today"
-              rows={2}
-              value={draft.today}
-              onChange={(event) => setDraft({ ...draft, today: event.target.value })}
-              placeholder="What they are picking up"
-              className={`${TYPE.body} ${FIELD.input}`}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className={`${TYPE.eyebrow} text-slate-400 block mb-1.5`} htmlFor="standup-blocker">
-            Blocker <span className="text-slate-300">— leave empty if none</span>
-          </label>
-          <textarea
-            id="standup-blocker"
-            rows={2}
-            value={draft.blocker}
-            onChange={(event) => setDraft({ ...draft, blocker: event.target.value })}
-            placeholder="What is stopping them"
-            className={`${TYPE.body} ${FIELD.input}`}
-          />
-        </div>
-
-        {formError && (
-          <p className={`${TYPE.meta} ${STATUS.blocked.text} font-medium`} role="alert">
-            {formError}
-          </p>
-        )}
-
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={saving || draftEmpty || !draft.memberId}
-            className={`${TYPE.meta} ${FIELD.button} ${FIELD.primary}`}
-          >
-            <FiSave size={13} aria-hidden="true" />
-            {saving ? 'Saving…' : 'Save entry'}
-          </button>
-
-          {(draft.memberId || !draftEmpty) && (
-            <button
-              type="button"
-              onClick={() => {
-                setDraft(emptyDraft);
-                setFormError('');
-              }}
-              className={`${TYPE.meta} ${FIELD.button} ${FIELD.secondary}`}
+            <select
+              id="standup-member"
+              value={draft.memberId}
+              onChange={(event) => chooseMember(event.target.value)}
+              className={`${TYPE.body} ${FIELD.input} cursor-pointer`}
             >
-              Clear
-            </button>
+              <option value="">Choose a member</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name ?? member.email}
+                  {member.department ? ` (${member.department})` : ''}
+                  {entryByMember.has(member.id) ? ' — already recorded' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={`${TYPE.eyebrow} text-slate-400 block mb-1.5`} htmlFor="standup-yesterday">
+                Yesterday
+              </label>
+              <textarea
+                id="standup-yesterday"
+                rows={2}
+                value={draft.yesterday}
+                onChange={(event) => setDraft({ ...draft, yesterday: event.target.value })}
+                placeholder="What they finished"
+                className={`${TYPE.body} ${FIELD.input}`}
+              />
+            </div>
+
+            <div>
+              <label className={`${TYPE.eyebrow} text-slate-400 block mb-1.5`} htmlFor="standup-today">
+                Today
+              </label>
+              <textarea
+                id="standup-today"
+                rows={2}
+                value={draft.today}
+                onChange={(event) => setDraft({ ...draft, today: event.target.value })}
+                placeholder="What they are picking up"
+                className={`${TYPE.body} ${FIELD.input}`}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className={`${TYPE.eyebrow} text-slate-400 block mb-1.5`} htmlFor="standup-blocker">
+              Blocker <span className="text-slate-300">— leave empty if none</span>
+            </label>
+            <textarea
+              id="standup-blocker"
+              rows={2}
+              value={draft.blocker}
+              onChange={(event) => setDraft({ ...draft, blocker: event.target.value })}
+              placeholder="What is stopping them"
+              className={`${TYPE.body} ${FIELD.input}`}
+            />
+          </div>
+
+          {formError && (
+            <p className={`${TYPE.meta} ${STATUS.blocked.text} font-medium`} role="alert">
+              {formError}
+            </p>
           )}
 
-          {draftEmpty && draft.memberId && (
-            <span className={`${TYPE.meta} text-slate-400`}>
-              Fill in at least one field
-            </span>
-          )}
-        </div>
-      </form>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={saving || draftEmpty || !draft.memberId}
+              className={`${TYPE.meta} ${FIELD.button} ${FIELD.primary}`}
+            >
+              <FiSave size={13} aria-hidden="true" />
+              {saving ? 'Saving…' : 'Save entry'}
+            </button>
+
+            {(draft.memberId || !draftEmpty) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(emptyDraft);
+                  setFormError('');
+                }}
+                className={`${TYPE.meta} ${FIELD.button} ${FIELD.secondary}`}
+              >
+                Clear
+              </button>
+            )}
+
+            {draftEmpty && draft.memberId && (
+              <span className={`${TYPE.meta} text-slate-400`}>
+                Fill in at least one field
+              </span>
+            )}
+          </div>
+        </form>
+      )}
     </div>
   );
 };

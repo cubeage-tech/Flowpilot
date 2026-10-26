@@ -5,11 +5,9 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import com.flowpilot.flowpilot.scrummaster.model.ScrumStandup;
 
-@Repository
 public interface ScrumStandupRepository
         extends JpaRepository<ScrumStandup, Long> {
 

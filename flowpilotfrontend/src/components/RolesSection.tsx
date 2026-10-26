@@ -143,7 +143,7 @@ export const RolesSection: React.FC = () => {
           ROLE-BASED ACCESS CONTROL
         </span>
         <h2 className="text-4xl sm:text-5xl font-black tracking-tight text-slate-900 mb-5">
-          9 roles. Granular permissions.
+          7 roles. Granular permissions.
         </h2>
         <p className="text-base text-slate-500 leading-relaxed font-medium">
           Every action gated by role. Super Admin to Viewer — everyone sees exactly what they should.
@@ -152,7 +152,7 @@ export const RolesSection: React.FC = () => {
 
       {/* Main Roles Container Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 items-start">
-        
+
         {/* Left Roles Sidebar Selector */}
         <div className="bg-white/80 backdrop-blur-md p-3 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col gap-1.5">
           {roles.map(role => {
@@ -161,11 +161,10 @@ export const RolesSection: React.FC = () => {
               <button
                 key={role.id}
                 onClick={() => setActiveRoleId(role.id)}
-                className={`flex items-center justify-between px-4 py-3.5 rounded-2xl text-xs font-bold transition-all duration-200 cursor-pointer ${
-                  isSelected
+                className={`flex items-center justify-between px-4 py-3.5 rounded-2xl text-xs font-bold transition-all duration-200 cursor-pointer ${isSelected
                     ? `${role.activeBg} border shadow-xs`
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <span>{role.icon}</span>
@@ -179,7 +178,7 @@ export const RolesSection: React.FC = () => {
 
         {/* Right Active Role Granular Details Card matching Figma Screenshots */}
         <div className={`bg-white rounded-[32px] border border-slate-200/80 shadow-xl shadow-slate-900/5 overflow-hidden border-t-4 ${currentRole.accentBorder}`}>
-          
+
           {/* Card Main Info */}
           <div className="p-8 sm:p-10 border-b border-slate-100">
             <div className="flex items-center gap-5 mb-6">
@@ -203,7 +202,7 @@ export const RolesSection: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
               {currentRole.permissions.map((perm, idx) => (
-                <div 
+                <div
                   key={idx}
                   className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-xs font-bold transition-all ${currentRole.pillBg}`}
                 >

@@ -7,11 +7,9 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
 import com.flowpilot.flowpilot.developer.model.DeveloperTimeLog;
 
-@Repository
 public interface TimeLogRepository
         extends JpaRepository<DeveloperTimeLog, Long> {
 

@@ -123,6 +123,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         'email',
         data.data.email || email
       );
+      if (data.data.userId) {
+        localStorage.setItem('id', String(data.data.userId));
+        localStorage.setItem('userId', String(data.data.userId));
+      }
+      localStorage.setItem('currentUser', JSON.stringify(data.data));
 
       /*
        * Use the role returned by the backend.

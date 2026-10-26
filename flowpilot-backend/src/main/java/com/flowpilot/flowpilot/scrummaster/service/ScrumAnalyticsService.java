@@ -54,7 +54,22 @@ public class ScrumAnalyticsService {
 
     public ScrumAnalyticsDto.Response getAnalytics(Long sprintId) {
 
-        ScrumSprint sprint = resolveSprint(sprintId);
+        ScrumSprint sprint;
+        try {
+            sprint = resolveSprint(sprintId);
+        } catch (ScrumNotFoundException e) {
+            if (sprintId == null) {
+                return new ScrumAnalyticsDto.Response(
+                        null,
+                        new ScrumAnalyticsDto.Velocity(0.0, 0.0, 0, List.of()),
+                        new ScrumAnalyticsDto.Kpis(0, 0, 0, 0.0, 0, 0),
+                        List.of(),
+                        List.of(),
+                        List.of()
+                );
+            }
+            throw e;
+        }
 
         return new ScrumAnalyticsDto.Response(
                 buildBurndown(sprint),
@@ -477,9 +492,9 @@ public class ScrumAnalyticsService {
         }
 
         return sprintRepository
-                .findFirstByStatus(ScrumSprint.Status.ACTIVE)
+                .findCurrentOrLatest()
                 .orElseThrow(() -> new ScrumNotFoundException(
-                        "No active sprint. Create one and start it."));
+                        "No sprints yet. Create one on the Sprints screen."));
     }
 
     private int nullSafe(Integer value) {

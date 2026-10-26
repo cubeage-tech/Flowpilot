@@ -34,6 +34,15 @@ public class QATestCase {
     @Column(name = "assigned_to")
     private String assignedTo;
 
+    @Column(name = "assigned_to_email")
+    private String assignedToEmail;
+
+    @Column(name = "assigned_to_dept")
+    private String assignedToDept;
+
+    @Column(name = "assigned_user_id")
+    private Long assignedUserId;
+
     @Column(name = "project")
     private String project;
 
@@ -208,6 +217,30 @@ public class QATestCase {
 
     public void setAssignedTo(String assignedTo) {
         this.assignedTo = assignedTo;
+    }
+
+    public String getAssignedToEmail() {
+        return assignedToEmail;
+    }
+
+    public void setAssignedToEmail(String assignedToEmail) {
+        this.assignedToEmail = assignedToEmail;
+    }
+
+    public String getAssignedToDept() {
+        return assignedToDept;
+    }
+
+    public void setAssignedToDept(String assignedToDept) {
+        this.assignedToDept = assignedToDept;
+    }
+
+    public Long getAssignedUserId() {
+        return assignedUserId;
+    }
+
+    public void setAssignedUserId(Long assignedUserId) {
+        this.assignedUserId = assignedUserId;
     }
 
     /*

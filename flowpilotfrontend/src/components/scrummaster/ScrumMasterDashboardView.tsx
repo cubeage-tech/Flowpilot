@@ -18,6 +18,7 @@ import {
 } from './scrumUI';
 import {
   fetchDashboard,
+  isNoActiveSprint,
   STATUS_LABEL,
   PRIORITY_LABEL,
   type Card,
@@ -55,13 +56,7 @@ const formatDay = (iso: string | null): string => {
     : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 };
 
-/**
- * The API client throws the backend's message rather than the status code, so
- * the "no sprint yet" 404 is recognised by its message. It is the expected
- * state for a new team rather than a failure, so it must not render as an error.
- */
-const isNoActiveSprint = (message: string): boolean =>
-  message.toLowerCase().includes('no active sprint');
+
 
 export const ScrumMasterDashboardView: React.FC = () => {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -148,8 +143,26 @@ export const ScrumMasterDashboardView: React.FC = () => {
 
   const { sprint, kpis, ceremonies, stuckTasks } = data;
 
+  if (!sprint) {
+    return (
+      <div className={`${SURFACE.card} ${SURFACE.pad} text-center py-12`}>
+        <h3 className={`${TYPE.title} text-slate-900 mb-2`}>No Sprints Active</h3>
+        <p className={`${TYPE.body} text-slate-500 max-w-md mx-auto mb-6`}>
+          No sprints have been created yet for this project. Create your first sprint on the Sprints page to start tracking progress.
+        </p>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className={`${TYPE.meta} ${FIELD.button} ${FIELD.primary}`}
+        >
+          <FiRefreshCw size={13} aria-hidden="true" /> Refresh Dashboard
+        </button>
+      </div>
+    );
+  }
+
   // Longest-idle first: that is the order these get worked down in a standup
-  const stuck = [...stuckTasks].sort((a, b) => b.daysInColumn - a.daysInColumn);
+  const stuck = [...(stuckTasks || [])].sort((a, b) => b.daysInColumn - a.daysInColumn);
 
   const scheduled = sprint.startDate !== null && sprint.endDate !== null;
   const duration = sprint.durationDays;

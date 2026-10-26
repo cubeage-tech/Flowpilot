@@ -6,6 +6,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,6 +27,7 @@ import jakarta.servlet.http.HttpServletRequest;
 public class SuperAdminAuditLogsService {
 
     private final SuperAdminAuditLogRepository repository;
+    private final List<SseEmitter> subscribers = new CopyOnWriteArrayList<>();
 
     private final DateTimeFormatter timeFormatter =
             DateTimeFormatter.ofPattern("hh:mm a", Locale.US);
@@ -47,7 +52,45 @@ public class SuperAdminAuditLogsService {
         auditLog.setEntityId(entityId);
         auditLog.setIpAddress(ipAddress);
 
-        return convertToDto(repository.save(auditLog));
+        SuperAdminAuditLogDto response = convertToDto(repository.save(auditLog));
+        notifySubscribers(response);
+        return response;
+    }
+
+    public void recordLoginQuietly(String userName, String entityId) {
+        try {
+            createAuditLog(
+                    userName,
+                    "USER_LOGIN",
+                    "User",
+                    entityId,
+                    currentIpAddress()
+            );
+        } catch (Exception ignored) {
+            // Login must still succeed if audit recording is unavailable.
+        }
+    }
+
+    public SseEmitter subscribe() {
+        SseEmitter emitter = new SseEmitter(0L);
+        subscribers.add(emitter);
+        emitter.onCompletion(() -> subscribers.remove(emitter));
+        emitter.onTimeout(() -> subscribers.remove(emitter));
+        emitter.onError(error -> subscribers.remove(emitter));
+        return emitter;
+    }
+
+    private void notifySubscribers(SuperAdminAuditLogDto auditLog) {
+        for (SseEmitter emitter : subscribers) {
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("audit-log")
+                    .data(Objects.requireNonNull(auditLog)));
+            } catch (Exception exception) {
+                subscribers.remove(emitter);
+                emitter.completeWithError(exception);
+            }
+        }
     }
 
     public void recordQuietly(
@@ -182,11 +225,31 @@ public class SuperAdminAuditLogsService {
             String ip = request.getHeader("X-Forwarded-For");
 
             if (ip == null || ip.isBlank() || "unknown".equalsIgnoreCase(ip)) {
+                ip = request.getHeader("X-Real-IP");
+            }
+
+            if (ip == null || ip.isBlank() || "unknown".equalsIgnoreCase(ip)) {
+                ip = request.getHeader("Forwarded");
+                if (ip != null && ip.toLowerCase(Locale.ROOT).contains("for=")) {
+                    ip = ip.substring(ip.toLowerCase(Locale.ROOT).indexOf("for=") + 4);
+                    int separator = ip.indexOf(';');
+                    if (separator >= 0) {
+                        ip = ip.substring(0, separator);
+                    }
+                    ip = ip.replace("\"", "").trim();
+                }
+            }
+
+            if (ip == null || ip.isBlank() || "unknown".equalsIgnoreCase(ip)) {
                 ip = request.getRemoteAddr();
             }
 
             if (ip != null && ip.contains(",")) {
                 ip = ip.split(",")[0].trim();
+            }
+
+            if ("0:0:0:0:0:0:0:1".equals(ip) || "::1".equals(ip)) {
+                return "127.0.0.1";
             }
 
             return ip != null ? ip : "";

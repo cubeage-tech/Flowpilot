@@ -1,6 +1,7 @@
 package com.flowpilot.flowpilot.superadmin.service;
 
 import com.flowpilot.flowpilot.common.dto.LoginRequestDto;
+import com.flowpilot.flowpilot.common.dto.LoginResponseDto;
 import lombok.RequiredArgsConstructor;
 import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.AfterThrowing;
@@ -16,6 +17,7 @@ public class FailedLoginAttemptAspect {
 
     private final FailedLoginAttemptService failedLoginAttemptService;
     private final EmailService emailService;
+    private final SuperAdminAuditLogsService auditLogsService;
 
     /*
      * Monitors the existing AuthService.login() method
@@ -41,6 +43,22 @@ public class FailedLoginAttemptAspect {
     ) {
         failedLoginAttemptService.resetAttempts(
             request.getEmail()
+        );
+        String userName = request.getEmail();
+        if (response instanceof LoginResponseDto loginResponse
+                && loginResponse.getName() != null
+                && !loginResponse.getName().isBlank()) {
+            userName = loginResponse.getName();
+        }
+        Long userId = null;
+        if (response instanceof LoginResponseDto loginResponse) {
+            userId = loginResponse.getUserId();
+        }
+        auditLogsService.recordLoginQuietly(
+            userName,
+            userId != null
+                ? String.format("EMP-%03d", userId)
+                : request.getEmail()
         );
     }
 

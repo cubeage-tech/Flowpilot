@@ -87,16 +87,6 @@ public class TimeLogController {
     // ============================================
     // ERROR RESPONSE
     // ============================================
-    private static class ErrorResponse {
-
-        private final String message;
-
-        public ErrorResponse(String message) {
-            this.message = message;
-        }
-
-        public String getMessage() {
-            return message;
-        }
+    private record ErrorResponse(String message) {
     }
 }

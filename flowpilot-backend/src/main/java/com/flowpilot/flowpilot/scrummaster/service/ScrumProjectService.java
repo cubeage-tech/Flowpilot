@@ -2,8 +2,10 @@ package com.flowpilot.flowpilot.scrummaster.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.flowpilot.flowpilot.superadmin.model.SuperAdminUser;
 import com.flowpilot.flowpilot.pm.model.PMProject;
@@ -20,6 +22,7 @@ import com.flowpilot.flowpilot.scrummaster.model.ScrumTask;
  * copying project rows means a renamed project is renamed everywhere at once.
  */
 @Service
+@Transactional(readOnly = true)
 public class ScrumProjectService {
 
     private final PMProjectsRepository projectsRepository;
@@ -35,7 +38,9 @@ public class ScrumProjectService {
         List<ScrumProjectDto.Project> projects = new ArrayList<>();
 
         for (PMProject project : projectsRepository.findAll()) {
-            projects.add(toDto(project));
+            if (project != null) {
+                projects.add(toDto(project));
+            }
         }
 
         projects.sort((a, b) -> {
@@ -48,12 +53,23 @@ public class ScrumProjectService {
     }
 
 
+    @SuppressWarnings("null")
+    public java.util.Optional<ScrumProjectDto.Project> findProject(Long projectId) {
+
+        if (projectId == null) {
+            return java.util.Optional.empty();
+        }
+
+        return projectsRepository.findById(projectId).map(this::toDto);
+    }
+
+
+    @SuppressWarnings("null")
     public ScrumProjectDto.Project getProject(Long projectId) {
 
-        return toDto(projectsRepository
-                .findById(projectId)
+        return findProject(projectId)
                 .orElseThrow(() -> new ScrumNotFoundException(
-                        "Project not found: " + projectId)));
+                        "Project not found: " + projectId));
     }
 
 
@@ -68,13 +84,19 @@ public class ScrumProjectService {
             return List.of();
         }
 
-        return getProject(projectId).members();
+        return findProject(projectId)
+                .map(ScrumProjectDto.Project::members)
+                .orElseGet(List::of);
     }
 
 
     private ScrumProjectDto.Project toDto(PMProject project) {
 
         List<ScrumProjectDto.TeamMember> members = new ArrayList<>();
+
+        if (project == null) {
+            return new ScrumProjectDto.Project(null, null, null, null, null, null, null, 0, members);
+        }
 
         // The PM module owns this join and recently moved it from the Admin
         // module's people to SuperAdminUser, so the mapping follows their type.
@@ -83,16 +105,17 @@ public class ScrumProjectService {
 
         if (team != null) {
             for (SuperAdminUser member : team) {
+                if (member == null) continue;
+                String memberName = member.getName() != null ? member.getName() : "Team Member";
                 members.add(new ScrumProjectDto.TeamMember(
                         member.getEmployeeId(),
-                        member.getName(),
+                        memberName,
                         member.getEmail(),
-                        // Their id doubles as the employee identifier
                         member.getEmployeeId() == null
                                 ? null
                                 : String.valueOf(member.getEmployeeId()),
                         member.getDesignation(),
-                        ScrumTask.initialsOf(member.getName())
+                        ScrumTask.initialsOf(memberName)
                 ));
             }
         }

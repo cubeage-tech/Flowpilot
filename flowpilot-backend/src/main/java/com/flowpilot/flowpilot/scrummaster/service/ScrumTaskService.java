@@ -47,22 +47,29 @@ public class ScrumTaskService {
     private final ScrumTaskRepository taskRepository;
     private final ScrumSprintRepository sprintRepository;
     private final UserRepository userRepository;
+    private final com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository superAdminUserRepository;
+    private final com.flowpilot.flowpilot.scrummaster.repository.ScrumSubtaskRepository subtaskRepository;
 
 
     public ScrumTaskService(
             ScrumTaskRepository taskRepository,
             ScrumSprintRepository sprintRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository superAdminUserRepository,
+            com.flowpilot.flowpilot.scrummaster.repository.ScrumSubtaskRepository subtaskRepository
     ) {
         this.taskRepository = taskRepository;
         this.sprintRepository = sprintRepository;
         this.userRepository = userRepository;
+        this.superAdminUserRepository = superAdminUserRepository;
+        this.subtaskRepository = subtaskRepository;
     }
 
 
     // ============================================
     // ASSIGNABLE MEMBERS
     // ============================================
+    @SuppressWarnings("null")
     public List<ScrumTaskDto.Member> listMembers() {
 
         List<User> users = new ArrayList<>(userRepository.findAll());
@@ -77,6 +84,7 @@ public class ScrumTaskService {
         List<ScrumTaskDto.Member> members = new ArrayList<>(users.size());
 
         for (User user : users) {
+            String department = resolveDepartment(user.getEmail(), user.getRole());
 
             members.add(
                     new ScrumTaskDto.Member(
@@ -84,12 +92,49 @@ public class ScrumTaskService {
                             user.getName(),
                             user.getEmail(),
                             user.getRole(),
-                            initialsOf(user.getName())
+                            initialsOf(user.getName()),
+                            department
                     )
             );
         }
 
         return members;
+    }
+
+    private final java.util.Map<String, String> departmentCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public void clearDepartmentCache() {
+        departmentCache.clear();
+    }
+
+    public String resolveDepartment(String email, String role) {
+        if (email != null && !email.isBlank()) {
+            String key = email.trim().toLowerCase(java.util.Locale.ROOT);
+            return departmentCache.computeIfAbsent(key, k -> {
+                if (superAdminUserRepository != null) {
+                    var opt = superAdminUserRepository.findByEmail(email.trim());
+                    if (opt.isPresent() && opt.get().getDepartment() != null && !opt.get().getDepartment().isBlank()) {
+                        return opt.get().getDepartment().trim();
+                    }
+                }
+                return defaultDepartmentForRole(role);
+            });
+        }
+        return defaultDepartmentForRole(role);
+    }
+
+    private String defaultDepartmentForRole(String role) {
+        if (role != null && !role.isBlank()) {
+            return switch (role.trim().toUpperCase()) {
+                case "DEVELOPER" -> "Engineering";
+                case "QA" -> "Quality Assurance";
+                case "SCRUMMASTER", "SCRUM_MASTER" -> "Scrum Team";
+                case "PM", "PROJECT_MANAGER" -> "Project Management";
+                case "ADMIN" -> "Administration";
+                default -> "General";
+            };
+        }
+        return "Engineering";
     }
 
 
@@ -108,24 +153,24 @@ public class ScrumTaskService {
     // toCard reads the lazily fetched sprint, so the mapping has to run inside
     // an open session no matter how open-in-view is configured
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public List<ScrumTaskDto.Card> listTasks() {
-
         List<ScrumTask> tasks = new ArrayList<>(taskRepository.findAll());
-
         tasks.sort(
                 Comparator.comparing(
                         ScrumTask::getTaskKey,
                         Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)
                 )
         );
+        return toCards(tasks);
+    }
 
-        List<ScrumTaskDto.Card> cards = new ArrayList<>(tasks.size());
 
-        for (ScrumTask task : tasks) {
-            cards.add(toCard(task));
-        }
-
-        return cards;
+    // ============================================
+    // GET SINGLE TASK
+    // ============================================
+    public ScrumTaskDto.Card getTask(Long taskId) {
+        return toCard(requireTask(taskId));
     }
 
 
@@ -134,17 +179,14 @@ public class ScrumTaskService {
     // Tasks not yet pulled into any sprint
     // ============================================
     public List<ScrumTaskDto.Card> listBacklog() {
+        return listBacklog(null);
+    }
 
-        List<ScrumTask> tasks =
-                taskRepository.findBySprintIsNullOrderByTaskKeyAsc();
-
-        List<ScrumTaskDto.Card> cards = new ArrayList<>(tasks.size());
-
-        for (ScrumTask task : tasks) {
-            cards.add(toCard(task));
-        }
-
-        return cards;
+    public List<ScrumTaskDto.Card> listBacklog(Long projectId) {
+        List<ScrumTask> tasks = (projectId != null)
+                ? taskRepository.findBySprintIsNullAndProjectIdOrderByTaskKeyAsc(projectId)
+                : taskRepository.findBySprintIsNullOrderByTaskKeyAsc();
+        return toCards(tasks);
     }
 
 
@@ -197,6 +239,10 @@ public class ScrumTaskService {
 
         if (request.sprintId() != null) {
             task.setSprint(requireSprint(request.sprintId()));
+        }
+
+        if (request.projectId() != null) {
+            task.setProjectId(request.projectId());
         }
 
         // moveTo rather than setStatus even on a fresh row, so enteredStatusAt
@@ -355,6 +401,7 @@ public class ScrumTaskService {
     // Returns the removed card so callers can name it
     // ============================================
     @Transactional
+    @SuppressWarnings("null")
     public ScrumTaskDto.Card deleteTask(Long taskId) {
 
         ScrumTask task = requireTask(taskId);
@@ -444,13 +491,51 @@ public class ScrumTaskService {
     // Public: the board and sprint services reuse these
     // ============================================
 
+    /** Batch projection: retrieves subtask counts in one aggregate query instead of 2N queries. */
+    public List<ScrumTaskDto.Card> toCards(List<ScrumTask> tasks) {
+        if (tasks == null || tasks.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> taskIds = tasks.stream()
+                .map(ScrumTask::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        java.util.Map<Long, Integer> totalSubtasks = new java.util.HashMap<>();
+        java.util.Map<Long, Integer> completedSubtasks = new java.util.HashMap<>();
+
+        if (!taskIds.isEmpty()) {
+            List<Object[]> rows = subtaskRepository.countSubtasksGroupedByTaskId(taskIds);
+            for (Object[] row : rows) {
+                Long tid = (Long) row[0];
+                Number total = (Number) row[1];
+                Number completed = (Number) row[2];
+                totalSubtasks.put(tid, total == null ? 0 : total.intValue());
+                completedSubtasks.put(tid, completed == null ? 0 : completed.intValue());
+            }
+        }
+
+        List<ScrumTaskDto.Card> cards = new ArrayList<>(tasks.size());
+        for (ScrumTask task : tasks) {
+            int subtaskCount = task.getId() != null ? totalSubtasks.getOrDefault(task.getId(), 0) : 0;
+            int completedSubtaskCount = task.getId() != null ? completedSubtasks.getOrDefault(task.getId(), 0) : 0;
+            cards.add(toCardWithCounts(task, subtaskCount, completedSubtaskCount));
+        }
+        return cards;
+    }
+
     /** Full card projection, including the derived stuck and overdue flags. */
     public ScrumTaskDto.Card toCard(ScrumTask task) {
-
         if (task == null) {
             throw new ScrumValidationException("Cannot render a null task");
         }
+        int subtaskCount = task.getId() != null ? subtaskRepository.countByTaskId(task.getId()) : 0;
+        int completedSubtaskCount = task.getId() != null ? subtaskRepository.countByTaskIdAndCompletedTrue(task.getId()) : 0;
+        return toCardWithCounts(task, subtaskCount, completedSubtaskCount);
+    }
 
+    private ScrumTaskDto.Card toCardWithCounts(ScrumTask task, int subtaskCount, int completedSubtaskCount) {
         User assignee = task.getAssignee();
         User reporter = task.getReporter();
         ScrumSprint sprint = task.getSprint();
@@ -470,16 +555,21 @@ public class ScrumTaskService {
                 task.getBlockedReason(),
                 assignee == null ? null : assignee.getId(),
                 assignee == null ? null : assignee.getName(),
-                // Left null rather than the entity's "?" so a client can tell
-                // an unassigned card from a member with a missing name
                 assignee == null ? null : task.getAssigneeInitials(),
+                assignee == null ? null : resolveDepartment(assignee.getEmail(), assignee.getRole()),
+                assignee == null ? null : assignee.getEmail(),
+                assignee == null ? null : assignee.getRole(),
                 reporter == null ? null : reporter.getId(),
                 reporter == null ? null : reporter.getName(),
                 // Reading the id off the lazy proxy does not load the sprint
                 sprint == null ? null : sprint.getId(),
                 task.getDaysInColumn(),
                 isStuck(task),
-                task.isOverdue()
+                task.isOverdue(),
+                subtaskCount,
+                completedSubtaskCount,
+                task.getProjectId(),
+                null
         );
     }
 
@@ -610,6 +700,7 @@ public class ScrumTaskService {
                         "Task " + taskId + " was not found"));
     }
 
+    @SuppressWarnings("null")
     private User requireUser(Long userId, String role) {
 
         return userRepository.findById(userId)
@@ -617,6 +708,7 @@ public class ScrumTaskService {
                         role + " " + userId + " was not found"));
     }
 
+    @SuppressWarnings("null")
     private ScrumSprint requireSprint(Long sprintId) {
 
         return sprintRepository.findById(sprintId)

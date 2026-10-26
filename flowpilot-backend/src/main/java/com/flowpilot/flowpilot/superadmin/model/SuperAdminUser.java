@@ -5,9 +5,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -17,7 +17,15 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "superadmin_users")
+@Table(
+        name = "superadmin_users",
+        indexes = {
+                @Index(name = "idx_user_email", columnList = "email"),
+                @Index(name = "idx_user_department", columnList = "department"),
+                @Index(name = "idx_user_role", columnList = "role"),
+                @Index(name = "idx_user_status", columnList = "status")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -33,7 +41,7 @@ public class SuperAdminUser {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "email", nullable = false)
+    @Column(name = "email", nullable = false, unique = true)
     private String email;
 
     @Column(name = "password", nullable = false)
@@ -64,15 +72,12 @@ public class SuperAdminUser {
 
     @PrePersist
     protected void onCreate() {
-
         if (active == null) {
             active = true;
         }
-
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
         }
-
         if (status == null || status.isBlank()) {
             status = "ACTIVE";
         }

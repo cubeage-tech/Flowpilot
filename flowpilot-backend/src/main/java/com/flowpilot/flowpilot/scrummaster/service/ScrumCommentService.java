@@ -75,6 +75,7 @@ public class ScrumCommentService {
 
 
     @Transactional
+    @SuppressWarnings("null")
     public ScrumCommentDto.Comment edit(Long commentId, ScrumCommentDto.UpdateRequest request) {
 
         if (request == null) {
@@ -99,6 +100,7 @@ public class ScrumCommentService {
 
 
     @Transactional
+    @SuppressWarnings("null")
     public void delete(Long commentId) {
 
         ScrumComment comment = commentRepository
@@ -132,6 +134,7 @@ public class ScrumCommentService {
         return body;
     }
 
+    @SuppressWarnings("null")
     private void requireTask(Long taskId) {
 
         if (!taskRepository.existsById(taskId)) {
@@ -139,6 +142,7 @@ public class ScrumCommentService {
         }
     }
 
+    @SuppressWarnings("null")
     private User requireUser(Long userId) {
 
         return userRepository

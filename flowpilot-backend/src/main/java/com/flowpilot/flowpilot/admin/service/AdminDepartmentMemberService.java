@@ -1,133 +1,123 @@
 package com.flowpilot.flowpilot.admin.service;
 
+import com.flowpilot.flowpilot.admin.dto.AdminDepartmentMemberDto;
 import com.flowpilot.flowpilot.admin.model.AdminDepartment;
 import com.flowpilot.flowpilot.admin.model.AdminDepartmentMember;
 import com.flowpilot.flowpilot.admin.repository.AdminDepartmentMemberRepository;
 import com.flowpilot.flowpilot.admin.repository.AdminDepartmentsRepository;
+import com.flowpilot.flowpilot.exception.ResourceNotFoundException;
+import com.flowpilot.flowpilot.superadmin.model.SuperAdminUser;
+import com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
+@Transactional
 public class AdminDepartmentMemberService {
 
     private final AdminDepartmentMemberRepository memberRepository;
     private final AdminDepartmentsRepository departmentRepository;
+    private final SuperAdminUserRepository superAdminUserRepository;
 
-    public AdminDepartmentMemberService(
-            AdminDepartmentMemberRepository memberRepository,
-            AdminDepartmentsRepository departmentRepository) {
-
-        this.memberRepository = memberRepository;
-        this.departmentRepository = departmentRepository;
-    }
-
+    @Transactional(readOnly = true)
     public List<AdminDepartmentMember> getMembers(Long departmentId) {
+        if (departmentId == null) {
+            throw new IllegalArgumentException("Department ID is required.");
+        }
 
-        AdminDepartment department =
-                departmentRepository.findById(departmentId)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Department not found"
-                                ));
+        AdminDepartment department = departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Department not found with ID: " + departmentId));
 
         return memberRepository.findByDepartment(department);
     }
 
-    public AdminDepartmentMember addMember(
-            Long departmentId,
-            AdminDepartmentMember member) {
+    public AdminDepartmentMember addMember(Long departmentId, AdminDepartmentMemberDto dto) {
+        if (departmentId == null) {
+            throw new IllegalArgumentException("Department ID is required.");
+        }
+        if (dto == null) {
+            throw new IllegalArgumentException("Member data is required.");
+        }
 
-        AdminDepartment department =
-                departmentRepository.findById(departmentId)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Department not found"
-                                ));
+        AdminDepartment department = departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Department not found with ID: " + departmentId));
 
-        /*
-         * Generate employee ID automatically.
-         *
-         * Example:
-         * EMP009 -> EMP010
-         * EMP010 -> EMP011
-         */
-        AdminDepartmentMember lastMember =
-                memberRepository.findTopByOrderByEmployeeIdDesc();
+        // Locate corresponding user from superadmin pool if available
+        SuperAdminUser user = null;
+        if (dto.getEmployeeId() != null) {
+            user = superAdminUserRepository.findById(dto.getEmployeeId()).orElse(null);
+        }
+        if (user == null && dto.getEmail() != null && !dto.getEmail().isBlank()) {
+            user = superAdminUserRepository.findByEmail(dto.getEmail().trim()).orElse(null);
+        }
 
-        int nextNumber = 1;
+        String employeeId = dto.getEmployeeId() != null ? String.valueOf(dto.getEmployeeId()) : null;
+        String fullName = dto.getFullName();
+        String email = dto.getEmail();
+        String designation = dto.getDesignation();
 
-        if (lastMember != null &&
-                lastMember.getEmployeeId() != null) {
-
-            String lastEmployeeId =
-                    lastMember.getEmployeeId();
-
-            if (lastEmployeeId.startsWith("EMP")) {
-
-                try {
-                    int lastNumber =
-                            Integer.parseInt(
-                                    lastEmployeeId.substring(3)
-                            );
-
-                    nextNumber = lastNumber + 1;
-
-                } catch (NumberFormatException ignored) {
-                    // Keep nextNumber as 1
-                }
+        if (user != null) {
+            employeeId = String.valueOf(user.getEmployeeId());
+            if (fullName == null || fullName.isBlank()) {
+                fullName = user.getName();
+            }
+            if (email == null || email.isBlank()) {
+                email = user.getEmail();
+            }
+            if (designation == null || designation.isBlank()) {
+                designation = user.getDesignation() != null ? user.getDesignation() : user.getRole();
             }
         }
 
-        String employeeId =
-                String.format("EMP%03d", nextNumber);
+        if (employeeId == null || employeeId.isBlank()) {
+            throw new IllegalArgumentException("Employee ID is required.");
+        }
 
-        member.setId(null);
-        member.setDepartment(department);
+        if (memberRepository.existsByDepartmentAndEmployeeId(department, employeeId)) {
+            throw new IllegalArgumentException("This user is already a member of " + department.getName() + ".");
+        }
 
-        // Employee ID is generated by backend
-        member.setEmployeeId(employeeId);
+        AdminDepartmentMember member = AdminDepartmentMember.builder()
+                .department(department)
+                .employeeId(employeeId)
+                .fullName(fullName != null ? fullName.trim() : "Team Member")
+                .email(email != null ? email.trim() : "")
+                .designation(designation != null && !designation.isBlank() ? designation.trim() : "Member")
+                .build();
 
-        return memberRepository.save(member);
+        AdminDepartmentMember saved = memberRepository.save(member);
+
+        // Keep department member count synchronized
+        int count = memberRepository.findByDepartment(department).size();
+        department.setMembers(count);
+        departmentRepository.save(department);
+
+        return saved;
     }
 
-    public AdminDepartmentMember updateMember(
-            Long departmentId,
-            Long memberId,
-            AdminDepartmentMember updatedMember) {
+    public void removeMember(Long departmentId, Long memberId) {
+        if (departmentId == null || memberId == null) {
+            throw new IllegalArgumentException("Department ID and Member ID are required.");
+        }
 
-        AdminDepartment department =
-                departmentRepository.findById(departmentId)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Department not found"
-                                ));
+        AdminDepartment department = departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Department not found with ID: " + departmentId));
 
-        AdminDepartmentMember existingMember =
-                memberRepository.findById(memberId)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Member not found"
-                                ));
+        AdminDepartmentMember member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new ResourceNotFoundException("Member not found with ID: " + memberId));
 
-        existingMember.setDepartment(department);
-        existingMember.setFullName(
-                updatedMember.getFullName()
-        );
-        existingMember.setEmail(
-                updatedMember.getEmail()
-        );
+        if (!member.getDepartment().getId().equals(department.getId())) {
+            throw new IllegalArgumentException("Member does not belong to this department.");
+        }
 
-        /*
-         * Do NOT update employee ID.
-         *
-         * Employee ID is permanent once generated.
-         */
-        
-        existingMember.setDesignation(
-                updatedMember.getDesignation()
-        );
+        memberRepository.delete(member);
 
-        return memberRepository.save(existingMember);
+        int count = memberRepository.findByDepartment(department).size();
+        department.setMembers(count);
+        departmentRepository.save(department);
     }
 }

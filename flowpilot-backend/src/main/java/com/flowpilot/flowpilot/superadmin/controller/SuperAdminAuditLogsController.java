@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.flowpilot.flowpilot.superadmin.dto.SuperAdminAuditLogDto;
 import com.flowpilot.flowpilot.superadmin.service.SuperAdminAuditLogsService;
@@ -33,5 +34,10 @@ public class SuperAdminAuditLogsController {
         return ResponseEntity.ok(
                 auditLogsService.getAuditLogs(filter, search)
         );
+    }
+
+    @GetMapping(value = "/stream", produces = "text/event-stream")
+    public SseEmitter streamAuditLogs() {
+        return auditLogsService.subscribe();
     }
 }

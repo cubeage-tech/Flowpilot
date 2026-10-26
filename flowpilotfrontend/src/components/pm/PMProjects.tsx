@@ -173,6 +173,9 @@ export function PMProjects() {
   const [membersLoading, setMembersLoading] =
     useState(true);
 
+  const [memberSearchTerm, setMemberSearchTerm] =
+    useState('');
+
   const [showModal, setShowModal] =
     useState(false);
 
@@ -467,6 +470,7 @@ export function PMProjects() {
       });
     }
 
+    setMemberSearchTerm("");
     setShowModal(true);
   };
 
@@ -480,6 +484,7 @@ export function PMProjects() {
     }
 
     setShowModal(false);
+    setMemberSearchTerm("");
     setEditingId(null);
     setError("");
   };
@@ -1256,8 +1261,18 @@ export function PMProjects() {
                       </div>
                     )}
 
-                    {/* MEMBER LIST */}
+                    {/* SEARCH BAR FOR TEAM MEMBERS */}
+                    <div className="mb-2">
+                      <input
+                        type="text"
+                        placeholder="Search employees by name, role, email, ID..."
+                        value={memberSearchTerm}
+                        onChange={(e) => setMemberSearchTerm(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-red-500 focus:bg-white focus:outline-none"
+                      />
+                    </div>
 
+                    {/* MEMBER LIST */}
                     <div
                       className="
                         max-h-48
@@ -1280,8 +1295,17 @@ export function PMProjects() {
                           Loading SuperAdmin
                           users...
                         </div>
-                      ) : superAdminMembers.length ===
-                        0 ? (
+                      ) : superAdminMembers.filter((m) => {
+                          if (!memberSearchTerm.trim()) return true;
+                          const q = memberSearchTerm.toLowerCase();
+                          return (
+                            (m.name && m.name.toLowerCase().includes(q)) ||
+                            (m.email && m.email.toLowerCase().includes(q)) ||
+                            (m.role && m.role.toLowerCase().includes(q)) ||
+                            (m.designation && m.designation.toLowerCase().includes(q)) ||
+                            String(m.employeeId).includes(q)
+                          );
+                        }).length === 0 ? (
                         <div
                           className="
                             px-4
@@ -1290,12 +1314,24 @@ export function PMProjects() {
                             text-slate-400
                           "
                         >
-                          No active SuperAdmin
-                          users found.
+                          {memberSearchTerm.trim()
+                            ? "No matching employees found."
+                            : "No active SuperAdmin users found."}
                         </div>
                       ) : (
-                        superAdminMembers.map(
-                          (member) => {
+                        superAdminMembers
+                          .filter((m) => {
+                            if (!memberSearchTerm.trim()) return true;
+                            const q = memberSearchTerm.toLowerCase();
+                            return (
+                              (m.name && m.name.toLowerCase().includes(q)) ||
+                              (m.email && m.email.toLowerCase().includes(q)) ||
+                              (m.role && m.role.toLowerCase().includes(q)) ||
+                              (m.designation && m.designation.toLowerCase().includes(q)) ||
+                              String(m.employeeId).includes(q)
+                            );
+                          })
+                          .map((member) => {
 
                             const selected =
                               formData.teamMemberIds.includes(
@@ -1501,26 +1537,6 @@ export function PMProjects() {
                         Delayed
                       </option>
                     </select>
-                  </FormField>
-                </div>
-
-                {/* PROGRESS */}
-
-                <div className="mt-4">
-                  <FormField label="Progress %">
-                    <input
-                      type="number"
-                      name="progress"
-                      min="0"
-                      max="100"
-                      value={
-                        formData.progress
-                      }
-                      onChange={
-                        handleChange
-                      }
-                      className="form-input"
-                    />
                   </FormField>
                 </div>
               </div>

@@ -29,6 +29,10 @@ public class ScrumBoardDto {
     ) {}
 
     public record Response(
+            /** The project this board is scoped to, null when unscoped. */
+            Long projectId,
+            /** The project's name, so the client need not join it back itself. */
+            String projectName,
             Long sprintId,
             String sprintName,
             String sprintStatus,

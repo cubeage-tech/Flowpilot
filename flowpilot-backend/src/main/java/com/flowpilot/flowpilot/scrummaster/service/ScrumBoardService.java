@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.flowpilot.flowpilot.common.model.User;
 import com.flowpilot.flowpilot.common.repository.UserRepository;
 import com.flowpilot.flowpilot.scrummaster.dto.ScrumBoardDto;
+import com.flowpilot.flowpilot.scrummaster.dto.ScrumProjectDto;
 import com.flowpilot.flowpilot.scrummaster.dto.ScrumTaskDto;
 import com.flowpilot.flowpilot.scrummaster.exception.ScrumNotFoundException;
 import com.flowpilot.flowpilot.scrummaster.exception.ScrumValidationException;
@@ -76,6 +80,8 @@ public class ScrumBoardService {
     private final ScrumWipLimitRepository wipLimitRepository;
     private final UserRepository userRepository;
     private final ScrumTaskService taskService;
+    private final ScrumProjectService projectService;
+    private final com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository superAdminUserRepository;
 
 
     public ScrumBoardService(
@@ -83,13 +89,17 @@ public class ScrumBoardService {
             ScrumSprintRepository sprintRepository,
             ScrumWipLimitRepository wipLimitRepository,
             UserRepository userRepository,
-            ScrumTaskService taskService
+            ScrumTaskService taskService,
+            ScrumProjectService projectService,
+            com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository superAdminUserRepository
     ) {
         this.taskRepository = taskRepository;
         this.sprintRepository = sprintRepository;
         this.wipLimitRepository = wipLimitRepository;
         this.userRepository = userRepository;
         this.taskService = taskService;
+        this.projectService = projectService;
+        this.superAdminUserRepository = superAdminUserRepository;
     }
 
 
@@ -98,24 +108,67 @@ public class ScrumBoardService {
     // ============================================
 
     /**
-     * Builds the board for the given sprint, or for the active sprint when no
-     * id is supplied (the SRS sprint selector defaults to "current").
+     * Builds the board for one project's sprint.
+     *
+     * A scrum master picks the project first and works inside it, so projectId
+     * is the outer scope: it decides which sprint is shown when no sprint is
+     * named, and it narrows the assignee list to that project's team. Both ids
+     * stay optional so an unscoped call still returns the active sprint, which
+     * is what the sprint selector's "current" default asks for.
      */
     // Read-only transaction: ScrumTask.sprint is lazy, so card mapping must
     // stay inside an open session no matter how open-in-view is configured
     @Transactional(readOnly = true)
-    public ScrumBoardDto.Response getBoard(Long sprintId, BoardFilter filter) {
+    @SuppressWarnings("null")
+    public ScrumBoardDto.Response getBoard(
+            Long projectId,
+            Long sprintId,
+            BoardFilter filter
+    ) {
 
-        ScrumSprint sprint = resolveSprint(sprintId);
+        Optional<ScrumSprint> sprintOpt = findSprint(projectId, sprintId);
+
+        if (sprintOpt.isEmpty()) {
+            if (sprintId != null) {
+                throw new ScrumNotFoundException("Sprint " + sprintId + " not found.");
+            }
+            List<ScrumBoardDto.Column> emptyColumns = new ArrayList<>();
+            Map<ScrumTask.Status, Integer> limits = loadWipLimits();
+            for (Map.Entry<ScrumTask.Status, String> column : COLUMN_LABELS.entrySet()) {
+                ScrumTask.Status status = column.getKey();
+                Integer wipLimit = limits.get(status);
+                emptyColumns.add(new ScrumBoardDto.Column(
+                        status.name(),
+                        column.getValue(),
+                        0, 0, wipLimit, false, 0, List.of()
+                ));
+            }
+            return new ScrumBoardDto.Response(
+                    projectId,
+                    projectNameOf(projectId),
+                    null,
+                    "No Sprints",
+                    null,
+                    0,
+                    0,
+                    List.of(),
+                    loadMembers(projectId),
+                    emptyColumns
+            );
+        }
+
+        ScrumSprint sprint = sprintOpt.get();
+
+        // The sprint is the authority on the project, not the request: asking
+        // for no project and landing on a sprint still tells the client which
+        // project it is looking at.
+        Long scopeProjectId = sprint.getProjectId();
 
         List<ScrumTask> tasks =
                 taskRepository.findBySprintIdOrderByStatusAscTaskKeyAsc(sprint.getId());
 
-        // Map once: the card mapper already normalises labels, ageing and the
-        // stuck flag, so filtering works off the same view the client renders
-        List<ScrumTaskDto.Card> allCards = tasks.stream()
-                .map(taskService::toCard)
-                .toList();
+        // Map in batch with single-query subtask counts
+        List<ScrumTaskDto.Card> allCards = taskService.toCards(tasks);
 
         // Labels come from the unfiltered set: filtering by a label must not
         // remove that label from the control the user just used
@@ -179,6 +232,8 @@ public class ScrumBoardService {
         }
 
         return new ScrumBoardDto.Response(
+                scopeProjectId,
+                projectNameOf(scopeProjectId),
                 sprint.getId(),
                 sprint.getName(),
                 sprint.getStatus() == null ? null : sprint.getStatus().name(),
@@ -187,7 +242,7 @@ public class ScrumBoardService {
                 totalTasks,
                 totalPoints,
                 availableLabels,
-                loadMembers(),
+                loadMembers(scopeProjectId),
                 columns
         );
     }
@@ -274,6 +329,7 @@ public class ScrumBoardService {
     @Transactional
     public ScrumBoardDto.Response setWipLimit(
             ScrumBoardDto.WipLimitRequest request,
+            Long projectId,
             Long sprintId,
             BoardFilter filter
     ) {
@@ -301,7 +357,7 @@ public class ScrumBoardService {
 
         wipLimitRepository.save(wipLimit);
 
-        return getBoard(sprintId, filter);
+        return getBoard(projectId, sprintId, filter);
     }
 
 
@@ -309,18 +365,55 @@ public class ScrumBoardService {
     // HELPERS
     // ============================================
 
-    private ScrumSprint resolveSprint(Long sprintId) {
+    private Optional<ScrumSprint> findSprint(Long projectId, Long sprintId) {
 
         if (sprintId != null) {
 
-            return sprintRepository.findById(sprintId)
-                    .orElseThrow(() -> new ScrumNotFoundException(
-                            "Sprint " + sprintId + " not found."));
+            Optional<ScrumSprint> sprintOpt = sprintRepository.findById(sprintId);
+
+            if (sprintOpt.isPresent()) {
+                ScrumSprint sprint = sprintOpt.get();
+                if (projectId != null && !projectId.equals(sprint.getProjectId())) {
+
+                    throw new ScrumValidationException(
+                            "Sprint " + sprintId + " belongs to "
+                                    + (sprint.getProjectId() == null
+                                            ? "no project"
+                                            : "project " + sprint.getProjectId())
+                                    + ", not project " + projectId + ".");
+                }
+            }
+
+            return sprintOpt;
         }
 
-        return sprintRepository.findFirstByStatus(ScrumSprint.Status.ACTIVE)
-                .orElseThrow(() -> new ScrumNotFoundException(
-                        "No active sprint. Create one and start it."));
+        if (projectId != null) {
+
+            return sprintRepository
+                    .findFirstByProjectIdAndStatusOrderBySprintNumberDesc(projectId, ScrumSprint.Status.ACTIVE)
+                    .or(() -> sprintRepository
+                            .findFirstByProjectIdAndStatusOrderByIdDesc(projectId, ScrumSprint.Status.ACTIVE))
+                    .or(() -> sprintRepository
+                            .findFirstByProjectIdAndStatusOrderBySprintNumberDesc(projectId, ScrumSprint.Status.PLANNED))
+                    .or(() -> sprintRepository
+                            .findFirstByProjectIdOrderBySprintNumberDesc(projectId))
+                    .or(() -> sprintRepository
+                            .findFirstByProjectIdOrderByIdDesc(projectId));
+        }
+
+        return sprintRepository.findCurrentOrLatest();
+    }
+
+
+    private String projectNameOf(Long projectId) {
+
+        if (projectId == null) {
+            return null;
+        }
+
+        return projectService.findProject(projectId)
+                .map(ScrumProjectDto.Project::name)
+                .orElse(null);
     }
 
 
@@ -443,22 +536,62 @@ public class ScrumBoardService {
     }
 
 
-    private List<ScrumTaskDto.Member> loadMembers() {
+    /**
+     * Who a card can be assigned to.
+     *
+     * Scoped to the project's team when a project is in play, so a scrum master
+     * assigns work to people who are actually on the project. The join has to
+     * go through email: a task's assignee is a `users` row, while the PM
+     * module's team is made of `superadmin_users` rows, and email is the only
+     * key the two tables share.
+     */
+    @SuppressWarnings("null")
+    private List<ScrumTaskDto.Member> loadMembers(Long projectId) {
 
         Comparator<User> byName = Comparator.comparing(
                 User::getName,
                 Comparator.nullsLast(String::compareToIgnoreCase));
 
-        return userRepository.findAll().stream()
+        List<User> candidates = userRepository.findAll();
+
+        if (projectId != null) {
+
+            Set<String> teamEmails = projectService.membersOfProject(projectId)
+                    .stream()
+                    .map(ScrumProjectDto.TeamMember::email)
+                    .filter(Objects::nonNull)
+                    .map(email -> email.trim().toLowerCase(Locale.ROOT))
+                    .collect(Collectors.toSet());
+
+            List<User> team = candidates.stream()
+                    .filter(user -> user.getEmail() != null
+                            && teamEmails.contains(
+                                    user.getEmail().trim().toLowerCase(Locale.ROOT)))
+                    .toList();
+
+            // Deliberately not narrowing to an empty list. A project with no
+            // matched team would leave the board unable to assign anything,
+            // which reads as a broken screen rather than an unstaffed project.
+            if (!team.isEmpty()) {
+                candidates = team;
+            }
+        }
+
+        return candidates.stream()
                 .sorted(byName)
                 .map(user -> new ScrumTaskDto.Member(
                         user.getId(),
                         user.getName(),
                         user.getEmail(),
                         user.getRole(),
-                        initialsOf(user.getName())
+                        initialsOf(user.getName()),
+                        resolveDepartment(user.getEmail(), user.getRole())
                 ))
                 .toList();
+    }
+
+    private String resolveDepartment(String email, String role) {
+        return taskService.resolveDepartment(email, role);
     }
 
 

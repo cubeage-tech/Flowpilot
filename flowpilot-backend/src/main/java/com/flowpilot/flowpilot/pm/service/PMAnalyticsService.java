@@ -22,6 +22,7 @@ public class PMAnalyticsService {
         this.userRepository = userRepository;
     }
 
+    @SuppressWarnings("null")
     public List<PMTask> getAnalyticsTasks() {
 
         List<PMTask> tasks =

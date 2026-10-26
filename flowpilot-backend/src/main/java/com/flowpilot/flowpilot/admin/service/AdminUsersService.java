@@ -1,10 +1,11 @@
 package com.flowpilot.flowpilot.admin.service;
 
-import com.flowpilot.flowpilot.common.model.User;
 import com.flowpilot.flowpilot.common.repository.UserRepository;
 import com.flowpilot.flowpilot.superadmin.dto.SuperAdminUserDto;
 import com.flowpilot.flowpilot.superadmin.model.SuperAdminUser;
 import com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository;
+
+import com.flowpilot.flowpilot.superadmin.service.SuperAdminUsersService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -24,6 +25,21 @@ public class AdminUsersService {
      * Common users table used by the login system.
      */
     private final UserRepository commonUserRepository;
+
+    private final SuperAdminUsersService superAdminUsersService;
+
+
+    // =========================================================
+    // CREATE USER (ADMIN ACCESS)
+    // =========================================================
+
+    public SuperAdminUserDto createUser(SuperAdminUserDto dto) {
+        return superAdminUsersService.createUser(dto);
+    }
+
+    public String resetPassword(Long employeeId, String customPassword) {
+        return superAdminUsersService.resetPassword(employeeId, customPassword);
+    }
 
 
     // =========================================================

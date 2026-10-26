@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutGrid, Layers, Flame, CheckSquare, Users, Activity } from 'lucide-react';
+import { LayoutGrid, Layers, Flame, CheckSquare, Users, Activity, MessageSquare, RotateCcw } from 'lucide-react';
 import { DashboardLayout } from '../common/DashboardLayout';
 import { PMDashboardView } from './PMDashboardView';
 import { PMProjects } from './PMProjects';
@@ -7,6 +7,8 @@ import { PMSprintPlanning } from './PMSprintPlanning';
 import { PMTaskBoard } from './PMTaskBoard';
 import { PMWorkload } from './PMWorkload';
 import { PMAnalytics } from './PMAnalytics';
+import { ScrumStandups } from '../scrummaster/ScrumStandups';
+import { ScrumRetrospective } from '../scrummaster/ScrumRetrospective';
 
 const roleConfig = {
   label: 'SENIOR PROJECT MANAGER',
@@ -22,6 +24,8 @@ const navItems = [
   { name: 'My Projects', icon: <Layers size={18} /> },
   { name: 'Sprint Planning', icon: <Flame size={18} /> },
   { name: 'Task Board', icon: <CheckSquare size={18} /> },
+  { name: 'Team Standups', icon: <MessageSquare size={18} /> },
+  { name: 'Retrospective', icon: <RotateCcw size={18} /> },
   { name: 'Team Workload', icon: <Users size={18} /> },
   { name: 'Analytics & Reports', icon: <Activity size={18} /> },
 ];
@@ -31,6 +35,8 @@ const pageTitles: Record<string, string> = {
   'My Projects': 'My Projects',
   'Sprint Planning': 'Sprint Planning',
   'Task Board': 'Task Board',
+  'Team Standups': 'Daily Team Standups',
+  'Retrospective': 'Sprint Retrospective',
   'Team Workload': 'Team Workload',
   'Analytics & Reports': 'Analytics & Reports',
 };
@@ -71,6 +77,8 @@ export const PMLayout: React.FC<Props> = ({ onLogout }) => {
       {activeTab === 'My Projects' && <PMProjects />}
       {activeTab === 'Sprint Planning' && <PMSprintPlanning />}
       {activeTab === 'Task Board' && <PMTaskBoard />}
+      {activeTab === 'Team Standups' && <ScrumStandups readOnly={false} />}
+      {activeTab === 'Retrospective' && <ScrumRetrospective readOnly={false} />}
       {activeTab === 'Team Workload' && <PMWorkload />}
       {activeTab === 'Analytics & Reports' && <PMAnalytics />}
     </DashboardLayout>

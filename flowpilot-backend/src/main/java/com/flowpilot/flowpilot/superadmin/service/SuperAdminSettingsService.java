@@ -1,6 +1,5 @@
 package com.flowpilot.flowpilot.superadmin.service;
 
-import lombok.Data;
 import org.springframework.stereotype.Service;
 
 @Service

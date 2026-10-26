@@ -59,6 +59,7 @@ public class ScrumAttachmentController {
      * upload, so an inline text/html attachment would run in our origin.
      */
     @GetMapping("/{attachmentId}/download")
+    @SuppressWarnings("null")
     public ResponseEntity<Resource> download(@PathVariable Long attachmentId) {
 
         ScrumAttachmentService.StoredFile stored = service.download(attachmentId);

@@ -6,11 +6,9 @@ import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
 
 import com.flowpilot.flowpilot.scrummaster.model.ScrumTask;
 
-@Repository
 public interface ScrumTaskRepository
         extends JpaRepository<ScrumTask, Long> {
 
@@ -18,6 +16,8 @@ public interface ScrumTaskRepository
 
     /** Backlog: everything not attached to a sprint. */
     List<ScrumTask> findBySprintIsNullOrderByTaskKeyAsc();
+
+    List<ScrumTask> findBySprintIsNullAndProjectIdOrderByTaskKeyAsc(Long projectId);
 
     long countBySprintIdAndStatus(Long sprintId, ScrumTask.Status status);
 
@@ -88,4 +88,10 @@ public interface ScrumTaskRepository
         GROUP BY t.priority
     """)
     List<Object[]> distributionByPriority(@Param("sprintId") Long sprintId);
+
+    List<ScrumTask> findByAssigneeId(Long assigneeId);
+
+    List<ScrumTask> findByAssigneeIdOrderByStatusAscTaskKeyAsc(Long assigneeId);
+
+    List<ScrumTask> findByAssigneeEmailIgnoreCase(String email);
 }

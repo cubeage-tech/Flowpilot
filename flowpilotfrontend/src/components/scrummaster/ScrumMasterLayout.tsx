@@ -1,12 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { LayoutGrid, CheckSquare, Activity, Users, Calendar, Repeat } from 'lucide-react';
+import { LayoutGrid, CheckSquare, Activity, Users, Calendar, Repeat, Layers } from 'lucide-react';
 import { DashboardLayout } from '../common/DashboardLayout';
-import { ScrumMasterDashboardView } from './ScrumMasterDashboardView';
-import { ScrumBoard } from './ScrumBoard';
-import { ScrumSprints } from './ScrumSprints';
-import { ScrumBurndown } from './ScrumBurndown';
-import { ScrumStandups } from './ScrumStandups';
-import { ScrumRetrospective } from './ScrumRetrospective';
+import {
+  SuspendedScrumPage,
+  LazyScrumMasterDashboardView,
+  LazyScrumBoard,
+  LazyScrumBacklogs,
+  LazyScrumSprints,
+  LazyScrumBurndown,
+  LazyScrumStandups,
+  LazyScrumRetrospective
+} from './lazyScrumPages';
 import { fetchDashboard, STATUS_LABEL, type Dashboard } from './scrumApi';
 
 const roleConfig = {
@@ -20,6 +24,7 @@ const roleConfig = {
 
 const navItems = [
   { name: 'Sprint Overview',      icon: <LayoutGrid size={18} /> },
+  { name: 'Backlogs',             icon: <Layers size={18} /> },
   { name: 'Sprint Cycles',        icon: <Repeat size={18} /> },
   { name: 'Scrum Board',          icon: <CheckSquare size={18} /> },
   { name: 'Burndown & Velocity',  icon: <Activity size={18} /> },
@@ -29,6 +34,7 @@ const navItems = [
 
 const pageTitles: Record<string, string> = {
   'Sprint Overview':     'Sprint Overview',
+  'Backlogs':            'Backlog & Requirements',
   'Sprint Cycles':       'Sprint Cycles',
   'Scrum Board':         'Scrum Board',
   'Burndown & Velocity': 'Burndown & Velocity',
@@ -142,16 +148,52 @@ export const ScrumMasterLayout: React.FC<Props> = ({ onLogout }) => {
 
   useEffect(() => {
     void loadNotifications();
-  }, [loadNotifications, activeTab]);
+  }, [loadNotifications]);
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'Sprint Cycles':       return <ScrumSprints />;
-      case 'Scrum Board':         return <ScrumBoard />;
-      case 'Burndown & Velocity': return <ScrumBurndown />;
-      case 'Team & Standups':     return <ScrumStandups />;
-      case 'Retrospective':       return <ScrumRetrospective />;
-      default:                    return <ScrumMasterDashboardView />;
+      case 'Backlogs':
+        return (
+          <SuspendedScrumPage fallbackMessage="Loading Backlogs & Requirements...">
+            <LazyScrumBacklogs />
+          </SuspendedScrumPage>
+        );
+      case 'Sprint Cycles':
+        return (
+          <SuspendedScrumPage fallbackMessage="Loading Sprint Cycles...">
+            <LazyScrumSprints />
+          </SuspendedScrumPage>
+        );
+      case 'Scrum Board':
+        return (
+          <SuspendedScrumPage fallbackMessage="Loading Scrum Board...">
+            <LazyScrumBoard />
+          </SuspendedScrumPage>
+        );
+      case 'Burndown & Velocity':
+        return (
+          <SuspendedScrumPage fallbackMessage="Loading Burndown & Velocity Analytics...">
+            <LazyScrumBurndown />
+          </SuspendedScrumPage>
+        );
+      case 'Team & Standups':
+        return (
+          <SuspendedScrumPage fallbackMessage="Loading Team & Standups...">
+            <LazyScrumStandups />
+          </SuspendedScrumPage>
+        );
+      case 'Retrospective':
+        return (
+          <SuspendedScrumPage fallbackMessage="Loading Sprint Retrospective...">
+            <LazyScrumRetrospective />
+          </SuspendedScrumPage>
+        );
+      default:
+        return (
+          <SuspendedScrumPage fallbackMessage="Loading Sprint Overview...">
+            <LazyScrumMasterDashboardView />
+          </SuspendedScrumPage>
+        );
     }
   };
 
