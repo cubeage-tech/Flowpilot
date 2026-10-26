@@ -12,6 +12,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
@@ -23,7 +24,11 @@ import jakarta.persistence.Table;
  * the gap between committed and current points rather than silently absorbed.
  */
 @Entity
-@Table(name = "scrum_sprints")
+@Table(name = "scrum_sprints", indexes = {
+    @Index(name = "idx_scrum_sprint_status", columnList = "status"),
+    @Index(name = "idx_scrum_sprint_project_id", columnList = "project_id"),
+    @Index(name = "idx_scrum_sprint_number", columnList = "sprint_number")
+})
 public class ScrumSprint {
 
     public enum Status {

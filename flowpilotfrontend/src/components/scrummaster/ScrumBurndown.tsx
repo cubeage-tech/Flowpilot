@@ -6,6 +6,7 @@ import { TYPE, SURFACE, STATUS, FIELD } from './scrumUI';
 import {
   fetchAnalytics,
   fetchSprints,
+  isNoActiveSprint,
   type Analytics,
   type DayPoint,
   type Sprint
@@ -32,13 +33,7 @@ const niceCeiling = (value: number): number => {
 type Mode = 'burndown' | 'burnup';
 
 
-/**
- * The API client throws the backend's message rather than a status code, so the
- * "no active sprint" 404 is recognised by its text. It is the normal state for
- * a new team, not a fault, so it must not render as an error.
- */
-const isNoActiveSprint = (message: string): boolean =>
-  message.toLowerCase().includes('no active sprint');
+
 
 export const ScrumBurndown: React.FC = () => {
   const [data, setData] = useState<Analytics | null>(null);
@@ -179,7 +174,7 @@ export const ScrumBurndown: React.FC = () => {
           >
             {sprints.map((sprint) => (
               <option key={sprint.id} value={sprint.id}>
-                {sprint.name} · {sprint.status.toLowerCase()}
+                {sprint.name}{sprint.status ? ` · ${sprint.status.toLowerCase()}` : ''}
               </option>
             ))}
           </select>

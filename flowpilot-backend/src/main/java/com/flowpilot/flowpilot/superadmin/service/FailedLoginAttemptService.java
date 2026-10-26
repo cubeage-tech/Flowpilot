@@ -11,6 +11,7 @@ public class FailedLoginAttemptService {
     private final Map<String, Integer> failedAttempts =
             new ConcurrentHashMap<>();
 
+    @SuppressWarnings("null")
     public int recordFailedAttempt(String email) {
         return failedAttempts.merge(
                 email,

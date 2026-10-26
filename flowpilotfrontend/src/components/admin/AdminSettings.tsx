@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
   Settings,
@@ -9,38 +9,290 @@ import {
   Check,
 } from 'lucide-react';
 
+interface GeneralSettings {
+  platformName: string;
+  timezone: string;
+  dateFormat: string;
+  language: string;
+}
+
+interface SecuritySettings {
+  twoFactorAuth: boolean;
+  passwordExpiry: boolean;
+  sessionTimeout: boolean;
+}
+
+interface UserSettings {
+  allowRegistration: boolean;
+  requireApproval: boolean;
+  allowProfileChanges: boolean;
+}
+
+interface AdminSettingsData {
+  id?: number;
+
+  platformName: string;
+  timezone: string;
+  dateFormat: string;
+  language: string;
+
+  twoFactorAuth: boolean;
+  passwordExpiry: boolean;
+  sessionTimeout: boolean;
+
+  allowRegistration: boolean;
+  requireApproval: boolean;
+  allowProfileChanges: boolean;
+}
+
+const API_URL = 'http://localhost:8080/api/admin/settings';
+
 export const AdminSettings: React.FC = () => {
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const [generalSettings, setGeneralSettings] = useState({
-    platformName: 'IPMT Platform',
-    timezone: 'Asia/Kolkata',
-    dateFormat: 'DD/MM/YYYY',
-    language: 'English',
-  });
+  // =========================
+  // GENERAL SETTINGS
+  // =========================
 
-  const [securitySettings, setSecuritySettings] = useState({
-    twoFactorAuth: true,
-    passwordExpiry: true,
-    sessionTimeout: true,
-  });
+  const [generalSettings, setGeneralSettings] =
+    useState<GeneralSettings>({
+      platformName: 'IPMT Platform',
+      timezone: 'Asia/Kolkata',
+      dateFormat: 'DD/MM/YYYY',
+      language: 'English',
+    });
 
-  const [userSettings, setUserSettings] = useState({
-    allowRegistration: false,
-    requireApproval: true,
-    allowProfileChanges: true,
-  });
+  // =========================
+  // SECURITY SETTINGS
+  // =========================
 
-  const handleSave = () => {
-    setSaved(true);
+  const [securitySettings, setSecuritySettings] =
+    useState<SecuritySettings>({
+      twoFactorAuth: true,
+      passwordExpiry: true,
+      sessionTimeout: true,
+    });
 
-    setTimeout(() => {
+  // =========================
+  // USER MANAGEMENT SETTINGS
+  // =========================
+
+  const [userSettings, setUserSettings] =
+    useState<UserSettings>({
+      allowRegistration: false,
+      requireApproval: true,
+      allowProfileChanges: true,
+    });
+
+  // =========================================================
+  // FETCH SETTINGS FROM BACKEND
+  // =========================================================
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        setLoading(true);
+        setError('');
+
+        const token = localStorage.getItem('token');
+
+        if (!token) {
+          setError('Authentication token not found. Please login again.');
+          return;
+        }
+
+        const response = await fetch(API_URL, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          setError(
+            'You are not authorized to access admin settings. Please login again.'
+          );
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch settings. Status: ${response.status}`
+          );
+        }
+
+        const data: AdminSettingsData = await response.json();
+
+        // =========================
+        // UPDATE GENERAL SETTINGS
+        // =========================
+
+        setGeneralSettings({
+          platformName: data.platformName,
+          timezone: data.timezone,
+          dateFormat: data.dateFormat,
+          language: data.language,
+        });
+
+        // =========================
+        // UPDATE SECURITY SETTINGS
+        // =========================
+
+        setSecuritySettings({
+          twoFactorAuth: data.twoFactorAuth,
+          passwordExpiry: data.passwordExpiry,
+          sessionTimeout: data.sessionTimeout,
+        });
+
+        // =========================
+        // UPDATE USER SETTINGS
+        // =========================
+
+        setUserSettings({
+          allowRegistration: data.allowRegistration,
+          requireApproval: data.requireApproval,
+          allowProfileChanges: data.allowProfileChanges,
+        });
+
+      } catch (err) {
+        console.error('Error fetching admin settings:', err);
+
+        setError(
+          'Unable to load settings. Please check the backend server.'
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
+  // =========================================================
+  // SAVE SETTINGS TO BACKEND
+  // =========================================================
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
       setSaved(false);
-    }, 2500);
+      setError('');
+
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        setError('Authentication token not found. Please login again.');
+        return;
+      }
+
+      const settingsData: AdminSettingsData = {
+        platformName: generalSettings.platformName,
+        timezone: generalSettings.timezone,
+        dateFormat: generalSettings.dateFormat,
+        language: generalSettings.language,
+
+        twoFactorAuth: securitySettings.twoFactorAuth,
+        passwordExpiry: securitySettings.passwordExpiry,
+        sessionTimeout: securitySettings.sessionTimeout,
+
+        allowRegistration: userSettings.allowRegistration,
+        requireApproval: userSettings.requireApproval,
+        allowProfileChanges: userSettings.allowProfileChanges,
+      };
+
+      const response = await fetch(API_URL, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(settingsData),
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        setError(
+          'You are not authorized to update admin settings. Please login again.'
+        );
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to save settings. Status: ${response.status}`
+        );
+      }
+
+      const data: AdminSettingsData = await response.json();
+
+      // Update UI with saved backend data
+      setGeneralSettings({
+        platformName: data.platformName,
+        timezone: data.timezone,
+        dateFormat: data.dateFormat,
+        language: data.language,
+      });
+
+      setSecuritySettings({
+        twoFactorAuth: data.twoFactorAuth,
+        passwordExpiry: data.passwordExpiry,
+        sessionTimeout: data.sessionTimeout,
+      });
+
+      setUserSettings({
+        allowRegistration: data.allowRegistration,
+        requireApproval: data.requireApproval,
+        allowProfileChanges: data.allowProfileChanges,
+      });
+
+      setSaved(true);
+
+      setTimeout(() => {
+        setSaved(false);
+      }, 2500);
+
+    } catch (err) {
+      console.error('Error saving admin settings:', err);
+
+      setError(
+        'Unable to save settings. Please check the backend server.'
+      );
+    } finally {
+      setSaving(false);
+    }
   };
+
+  // =========================================================
+  // LOADING STATE
+  // =========================================================
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[300px] w-full items-center justify-center font-sans">
+        <div className="text-sm font-bold text-slate-500">
+          Loading settings...
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================
+  // MAIN UI
+  // =========================================================
 
   return (
     <div className="w-full space-y-6 font-sans">
+
+      {/* ==================== ERROR MESSAGE ==================== */}
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+          {error}
+        </div>
+      )}
 
       {/* ==================== SETTINGS CONTENT ==================== */}
 
@@ -147,11 +399,9 @@ export const AdminSettings: React.FC = () => {
 
         </div>
 
-
         {/* ==================== SETTINGS PANELS ==================== */}
 
         <div className="min-w-0 space-y-6">
-
 
           {/* ==================== GENERAL SETTINGS ==================== */}
 
@@ -204,7 +454,6 @@ export const AdminSettings: React.FC = () => {
 
             </div>
 
-
             {/* GENERAL FORM */}
 
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -255,7 +504,6 @@ export const AdminSettings: React.FC = () => {
 
               </div>
 
-
               {/* TIMEZONE */}
 
               <div>
@@ -298,6 +546,7 @@ export const AdminSettings: React.FC = () => {
                     focus:border-slate-400
                   "
                 >
+
                   <option value="Asia/Kolkata">
                     Asia/Kolkata (IST)
                   </option>
@@ -313,10 +562,10 @@ export const AdminSettings: React.FC = () => {
                   <option value="Europe/London">
                     Europe/London
                   </option>
+
                 </select>
 
               </div>
-
 
               {/* DATE FORMAT */}
 
@@ -360,6 +609,7 @@ export const AdminSettings: React.FC = () => {
                     focus:border-slate-400
                   "
                 >
+
                   <option value="DD/MM/YYYY">
                     DD/MM/YYYY
                   </option>
@@ -371,10 +621,10 @@ export const AdminSettings: React.FC = () => {
                   <option value="YYYY-MM-DD">
                     YYYY-MM-DD
                   </option>
+
                 </select>
 
               </div>
-
 
               {/* LANGUAGE */}
 
@@ -418,6 +668,7 @@ export const AdminSettings: React.FC = () => {
                     focus:border-slate-400
                   "
                 >
+
                   <option value="English">
                     English
                   </option>
@@ -429,6 +680,7 @@ export const AdminSettings: React.FC = () => {
                   <option value="Marathi">
                     Marathi
                   </option>
+
                 </select>
 
               </div>
@@ -436,7 +688,6 @@ export const AdminSettings: React.FC = () => {
             </div>
 
           </div>
-
 
           {/* ==================== SECURITY SETTINGS ==================== */}
 
@@ -489,7 +740,6 @@ export const AdminSettings: React.FC = () => {
 
             </div>
 
-
             {/* SECURITY OPTIONS */}
 
             <div className="divide-y divide-slate-100">
@@ -534,6 +784,7 @@ export const AdminSettings: React.FC = () => {
                     }
                   `}
                 >
+
                   <span
                     className={`
                       absolute
@@ -550,10 +801,10 @@ export const AdminSettings: React.FC = () => {
                       }
                     `}
                   />
+
                 </button>
 
               </div>
-
 
               {/* PASSWORD */}
 
@@ -595,6 +846,7 @@ export const AdminSettings: React.FC = () => {
                     }
                   `}
                 >
+
                   <span
                     className={`
                       absolute
@@ -611,10 +863,10 @@ export const AdminSettings: React.FC = () => {
                       }
                     `}
                   />
+
                 </button>
 
               </div>
-
 
               {/* SESSION */}
 
@@ -656,6 +908,7 @@ export const AdminSettings: React.FC = () => {
                     }
                   `}
                 >
+
                   <span
                     className={`
                       absolute
@@ -672,6 +925,7 @@ export const AdminSettings: React.FC = () => {
                       }
                     `}
                   />
+
                 </button>
 
               </div>
@@ -679,7 +933,6 @@ export const AdminSettings: React.FC = () => {
             </div>
 
           </div>
-
 
           {/* ==================== USER MANAGEMENT ==================== */}
 
@@ -732,7 +985,6 @@ export const AdminSettings: React.FC = () => {
 
             </div>
 
-
             {/* USER OPTIONS */}
 
             <div className="divide-y divide-slate-100">
@@ -777,6 +1029,7 @@ export const AdminSettings: React.FC = () => {
                     }
                   `}
                 >
+
                   <span
                     className={`
                       absolute
@@ -793,10 +1046,10 @@ export const AdminSettings: React.FC = () => {
                       }
                     `}
                   />
+
                 </button>
 
               </div>
-
 
               {/* APPROVAL */}
 
@@ -838,6 +1091,7 @@ export const AdminSettings: React.FC = () => {
                     }
                   `}
                 >
+
                   <span
                     className={`
                       absolute
@@ -854,10 +1108,10 @@ export const AdminSettings: React.FC = () => {
                       }
                     `}
                   />
+
                 </button>
 
               </div>
-
 
               {/* PROFILE */}
 
@@ -899,6 +1153,7 @@ export const AdminSettings: React.FC = () => {
                     }
                   `}
                 >
+
                   <span
                     className={`
                       absolute
@@ -915,6 +1170,7 @@ export const AdminSettings: React.FC = () => {
                       }
                     `}
                   />
+
                 </button>
 
               </div>
@@ -922,7 +1178,6 @@ export const AdminSettings: React.FC = () => {
             </div>
 
           </div>
-
 
           {/* ==================== SECURITY NOTICE ==================== */}
 
@@ -968,7 +1223,6 @@ export const AdminSettings: React.FC = () => {
 
           </div>
 
-
           {/* ==================== SAVE BUTTON ==================== */}
 
           <div className="flex justify-end">
@@ -976,6 +1230,7 @@ export const AdminSettings: React.FC = () => {
             <button
               type="button"
               onClick={handleSave}
+              disabled={saving}
               className="
                 inline-flex
                 items-center
@@ -990,9 +1245,17 @@ export const AdminSettings: React.FC = () => {
                 text-white
                 transition
                 hover:bg-slate-800
+                disabled:cursor-not-allowed
+                disabled:opacity-60
               "
             >
-              {saved ? (
+
+              {saving ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Saving...
+                </>
+              ) : saved ? (
                 <>
                   <Check size={17} />
                   Saved
@@ -1003,6 +1266,7 @@ export const AdminSettings: React.FC = () => {
                   Save Changes
                 </>
               )}
+
             </button>
 
           </div>
@@ -1016,4 +1280,3 @@ export const AdminSettings: React.FC = () => {
 };
 
 export default AdminSettings;
-

@@ -86,6 +86,7 @@ public class ScrumFileStore {
     }
 
 
+    @SuppressWarnings("null")
     public Resource load(String key) {
 
         Path source = resolve(key);

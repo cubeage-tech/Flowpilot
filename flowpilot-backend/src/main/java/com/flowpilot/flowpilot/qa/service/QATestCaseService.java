@@ -17,16 +17,42 @@ public class QATestCaseService {
 
     private final QATestCaseRepository testCaseRepository;
     private final ScrumBoardTaskRepository scrumBoardTaskRepository;
+    private final com.flowpilot.flowpilot.scrummaster.repository.ScrumTaskRepository scrumTaskRepository;
     private final PMProjectsRepository pmProjectsRepository;
+    private final com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository superAdminUserRepository;
 
     public QATestCaseService(
             QATestCaseRepository testCaseRepository,
             ScrumBoardTaskRepository scrumBoardTaskRepository,
-            PMProjectsRepository pmProjectsRepository) {
+            com.flowpilot.flowpilot.scrummaster.repository.ScrumTaskRepository scrumTaskRepository,
+            PMProjectsRepository pmProjectsRepository,
+            com.flowpilot.flowpilot.superadmin.repository.SuperAdminUserRepository superAdminUserRepository) {
 
         this.testCaseRepository = testCaseRepository;
         this.scrumBoardTaskRepository = scrumBoardTaskRepository;
+        this.scrumTaskRepository = scrumTaskRepository;
         this.pmProjectsRepository = pmProjectsRepository;
+        this.superAdminUserRepository = superAdminUserRepository;
+    }
+
+    private String resolveDepartment(String email, String role) {
+        if (email != null && !email.isBlank() && superAdminUserRepository != null) {
+            var opt = superAdminUserRepository.findByEmail(email.trim());
+            if (opt.isPresent() && opt.get().getDepartment() != null && !opt.get().getDepartment().isBlank()) {
+                return opt.get().getDepartment().trim();
+            }
+        }
+        if (role != null && !role.isBlank()) {
+            return switch (role.trim().toUpperCase()) {
+                case "DEVELOPER" -> "Engineering";
+                case "QA" -> "Quality Assurance";
+                case "SCRUMMASTER", "SCRUM_MASTER" -> "Scrum Team";
+                case "PM", "PROJECT_MANAGER" -> "Project Management";
+                case "ADMIN" -> "Administration";
+                default -> "General";
+            };
+        }
+        return "Quality Assurance";
     }
 
     /*
@@ -51,6 +77,7 @@ public class QATestCaseService {
      * =========================================================
      */
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public QATestCase getTestCase(Long id) {
 
         return testCaseRepository.findById(id)
@@ -174,6 +201,7 @@ public class QATestCaseService {
      * =========================================================
      */
     @Transactional
+    @SuppressWarnings("null")
     public QATestCase updateStatus(
             Long id,
             String status) {
@@ -251,12 +279,179 @@ public class QATestCaseService {
      * =========================================================
      */
     @Transactional
+    @SuppressWarnings("null")
     public int syncScrumMasterTasks() {
 
+        int changedCount = 0;
+
+        /*
+         * =====================================================
+         * 1. SYNCHRONIZE ACTIVE SCRUM MASTER TASKS (scrum_tasks)
+         * =====================================================
+         */
+        List<com.flowpilot.flowpilot.scrummaster.model.ScrumTask> modernTasks =
+                scrumTaskRepository.findAll();
+
+        for (com.flowpilot.flowpilot.scrummaster.model.ScrumTask task : modernTasks) {
+            if (task == null || task.getId() == null) {
+                continue;
+            }
+
+            String taskKey = task.getTaskKey();
+            if (taskKey == null || taskKey.isBlank()) {
+                taskKey = "T-" + task.getId();
+            }
+
+            if (task.getTitle() == null || task.getTitle().isBlank()) {
+                continue;
+            }
+
+            // Resolve PM Project
+            String projectName = null;
+            Long projectId = null;
+            if (task.getSprint() != null && task.getSprint().getProjectId() != null) {
+                projectId = task.getSprint().getProjectId();
+            }
+            if (projectId == null && task.getProjectId() != null) {
+                projectId = task.getProjectId();
+            }
+
+            if (projectId != null) {
+                PMProject project = pmProjectsRepository.findById(projectId).orElse(null);
+                if (project != null) {
+                    projectName = project.getProjectCode() != null && !project.getProjectCode().isBlank()
+                            ? project.getProjectCode() + " - " + project.getProjectName()
+                            : project.getProjectName();
+                }
+            }
+
+            // Resolve Assignee with Department and Email
+            String assigneeName = null;
+            String assigneeEmail = null;
+            String assigneeDept = null;
+            Long assigneeUserId = null;
+            if (task.getAssignee() != null) {
+                assigneeUserId = task.getAssignee().getId();
+                assigneeEmail = task.getAssignee().getEmail();
+                if (task.getAssignee().getName() != null && !task.getAssignee().getName().isBlank()) {
+                    assigneeName = task.getAssignee().getName().trim();
+                } else if (assigneeEmail != null) {
+                    assigneeName = assigneeEmail.trim();
+                }
+                assigneeDept = resolveDepartment(assigneeEmail, task.getAssignee().getRole());
+            }
+
+            // Find existing QA test case
+            QATestCase existing = testCaseRepository.findByScrumTaskId(task.getId()).orElse(null);
+            if (existing == null) {
+                existing = testCaseRepository.findByLinkedTask(taskKey).orElse(null);
+            }
+
+            if (existing == null) {
+                String generatedTestId = taskKey.trim() + "-QA";
+                if (testCaseRepository.existsByTestId(generatedTestId)) {
+                    int suffix = 2;
+                    String baseId = generatedTestId;
+                    while (testCaseRepository.existsByTestId(generatedTestId + "-" + suffix)) {
+                        suffix++;
+                    }
+                    generatedTestId = baseId + "-" + suffix;
+                }
+
+                String initialStatus = "Pending";
+                if (task.getStatus() == com.flowpilot.flowpilot.scrummaster.model.ScrumTask.Status.DONE) {
+                    initialStatus = "Passed";
+                } else if (task.getStatus() == com.flowpilot.flowpilot.scrummaster.model.ScrumTask.Status.TESTING) {
+                    initialStatus = "In Testing";
+                }
+
+                QATestCase qaTestCase = new QATestCase();
+                qaTestCase.setScrumTaskId(task.getId());
+                qaTestCase.setProjectId(projectId);
+                qaTestCase.setTestId(generatedTestId);
+                qaTestCase.setTitle(task.getTitle().trim());
+                qaTestCase.setType("Task");
+                qaTestCase.setLinkedTask(taskKey.trim());
+                qaTestCase.setPriority(calculatePriority(task.getStoryPoints()));
+                qaTestCase.setStatus(initialStatus);
+                qaTestCase.setAssignedTo(assigneeName);
+                qaTestCase.setAssignedToEmail(assigneeEmail);
+                qaTestCase.setAssignedToDept(assigneeDept);
+                qaTestCase.setAssignedUserId(assigneeUserId);
+                qaTestCase.setProject(projectName);
+
+                testCaseRepository.save(qaTestCase);
+                changedCount++;
+            } else {
+                boolean changed = false;
+                if (task.getStatus() == com.flowpilot.flowpilot.scrummaster.model.ScrumTask.Status.TESTING
+                        && "Pending".equalsIgnoreCase(existing.getStatus())) {
+                    existing.setStatus("In Testing");
+                    changed = true;
+                } else if (task.getStatus() == com.flowpilot.flowpilot.scrummaster.model.ScrumTask.Status.DONE
+                        && "Pending".equalsIgnoreCase(existing.getStatus())) {
+                    existing.setStatus("Passed");
+                    changed = true;
+                }
+                if (!task.getTitle().trim().equals(existing.getTitle())) {
+                    existing.setTitle(task.getTitle().trim());
+                    changed = true;
+                }
+                if (!taskKey.trim().equals(safe(existing.getLinkedTask()))) {
+                    existing.setLinkedTask(taskKey.trim());
+                    changed = true;
+                }
+                if (!equalsLong(existing.getProjectId(), projectId)) {
+                    existing.setProjectId(projectId);
+                    changed = true;
+                }
+                if (!equalsString(existing.getProject(), projectName)) {
+                    existing.setProject(projectName);
+                    changed = true;
+                }
+                if (!equalsString(existing.getAssignedTo(), assigneeName)) {
+                    existing.setAssignedTo(assigneeName);
+                    changed = true;
+                }
+                if (!equalsString(existing.getAssignedToEmail(), assigneeEmail)) {
+                    existing.setAssignedToEmail(assigneeEmail);
+                    changed = true;
+                }
+                if (!equalsString(existing.getAssignedToDept(), assigneeDept)) {
+                    existing.setAssignedToDept(assigneeDept);
+                    changed = true;
+                }
+                if (!equalsLong(existing.getAssignedUserId(), assigneeUserId)) {
+                    existing.setAssignedUserId(assigneeUserId);
+                    changed = true;
+                }
+                String newPriority = calculatePriority(task.getStoryPoints());
+                if (!equalsString(existing.getPriority(), newPriority)) {
+                    existing.setPriority(newPriority);
+                    changed = true;
+                }
+                if (existing.getScrumTaskId() == null) {
+                    existing.setScrumTaskId(task.getId());
+                    changed = true;
+                }
+                if (changed) {
+                    testCaseRepository.save(existing);
+                    changedCount++;
+                }
+            }
+        }
+
+        if (!modernTasks.isEmpty()) {
+            return changedCount;
+        }
+
+        /*
+         * =====================================================
+         * 2. SYNCHRONIZE LEGACY BOARD TASKS (scrum_board_tasks)
+         * =====================================================
+         */
         List<ScrumBoardTask> scrumTasks =
                 scrumBoardTaskRepository.findAll();
-
-        int changedCount = 0;
 
         for (ScrumBoardTask task : scrumTasks) {
 

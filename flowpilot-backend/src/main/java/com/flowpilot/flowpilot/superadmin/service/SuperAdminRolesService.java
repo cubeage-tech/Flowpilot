@@ -58,6 +58,7 @@ public class SuperAdminRolesService {
      * No permission is automatically changed here.
      */
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public SuperAdminRoleDto getRoleById(Long id) {
 
         SuperAdminRole role =
@@ -81,6 +82,7 @@ public class SuperAdminRolesService {
      * We do NOT force SUPER ADMIN permissions to TRUE.
      */
     @Transactional
+    @SuppressWarnings("null")
     public SuperAdminRoleDto updateRole(
             Long id,
             SuperAdminRoleDto dto

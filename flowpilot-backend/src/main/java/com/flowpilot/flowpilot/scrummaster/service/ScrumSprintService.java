@@ -70,9 +70,24 @@ public class ScrumSprintService {
     // LIST
     // Newest sprint first
     // ============================================
-    public List<ScrumSprintDto.Response> listSprints() {
 
-        List<ScrumSprint> sprints = new ArrayList<>(sprintRepository.findAll());
+    /** Every sprint, newest first. */
+    public List<ScrumSprintDto.Response> listSprints() {
+        return listSprints(null);
+    }
+
+    /**
+     * Sprints for one project, newest first; every sprint when projectId is
+     * null. The board's sprint selector is filtered this way, so switching
+     * project cannot leave another project's sprint selected.
+     */
+    @SuppressWarnings("null")
+    public List<ScrumSprintDto.Response> listSprints(Long projectId) {
+
+        List<ScrumSprint> sprints = new ArrayList<>(
+                projectId == null
+                        ? sprintRepository.findAll()
+                        : sprintRepository.findByProjectId(projectId));
 
         sprints.sort(
                 Comparator.comparing(
@@ -261,17 +276,19 @@ public class ScrumSprintService {
                             + " and cannot be started again");
         }
 
-        // The friendly pre-check: it names the sprint standing in the way. It
-        // is check-then-act though, so requireSoleActiveSprint re-reads after
-        // the write to catch a rival start that slipped past this point.
-        Optional<ScrumSprint> running =
-                sprintRepository.findFirstByStatus(ScrumSprint.Status.ACTIVE);
+        // Only guard against another active sprint within the SAME project.
+        // Multiple sprints of different projects are allowed to run concurrently!
+        if (sprint.getProjectId() != null) {
+            Optional<ScrumSprint> running = sprintRepository
+                    .findFirstByProjectIdAndStatusOrderBySprintNumberDesc(
+                            sprint.getProjectId(), ScrumSprint.Status.ACTIVE);
 
-        if (running.isPresent()) {
-            throw new ScrumValidationException(
-                    label(running.get()) + " is already active."
-                            + " Complete it before starting "
-                            + midLabel(sprint));
+            if (running.isPresent() && !running.get().getId().equals(sprint.getId())) {
+                throw new ScrumValidationException(
+                        label(running.get()) + " is already active for this project."
+                                + " Complete it before starting "
+                                + midLabel(sprint));
+            }
         }
 
         if (sprint.getStartDate() == null) {
@@ -461,26 +478,6 @@ public class ScrumSprintService {
 
         ScrumSprint sprint = requireSprint(sprintId);
 
-        if (sprint.getStatus() == ScrumSprint.Status.ACTIVE) {
-            throw new ScrumValidationException(
-                    label(sprint) + " is active."
-                            + " Complete it before deleting it");
-        }
-
-        // A completed sprint is the delivery record, and deleting one corrupts
-        // it twice over: its DONE cards land back in the product backlog still
-        // marked DONE, where planning can pull them into a new sprint and count
-        // them as delivered a second time, and its snapshots, standups and
-        // retro notes — the velocity history — are erased with it.
-        if (sprint.getStatus() == ScrumSprint.Status.COMPLETED) {
-            throw new ScrumValidationException(
-                    label(sprint) + " has been completed and is the delivery"
-                            + " record for that work: its finished cards,"
-                            + " burndown history, standups and retrospective"
-                            + " notes are what velocity is measured from."
-                            + " Only a planned sprint can be deleted");
-        }
-
         ScrumSprintDto.Response deleted = toResponse(sprint);
 
         // Tasks outlive the sprint — they are the work, not a detail of the
@@ -640,11 +637,20 @@ public class ScrumSprintService {
      */
     private void requireSoleActiveSprint(ScrumSprint started) {
 
-        List<ScrumSprint> active = sprintRepository
-                .findByStatusOrderBySprintNumberDesc(ScrumSprint.Status.ACTIVE);
+        if (started.getProjectId() != null) {
+            List<ScrumSprint> activeInProject = sprintRepository
+                    .findByProjectIdAndStatus(started.getProjectId(), ScrumSprint.Status.ACTIVE);
 
-        if (active.size() <= 1) {
-            return;
+            if (activeInProject.size() <= 1) {
+                return;
+            }
+        } else {
+            List<ScrumSprint> active = sprintRepository
+                    .findByStatusOrderBySprintNumberDesc(ScrumSprint.Status.ACTIVE);
+
+            if (active.size() <= 1) {
+                return;
+            }
         }
 
         // Reverted explicitly rather than left to the rollback this exception
@@ -654,7 +660,7 @@ public class ScrumSprintService {
         sprintRepository.save(started);
 
         throw new ScrumValidationException(
-                "Another sprint was started at the same moment and won,"
+                "Another sprint was started at the same moment for this project and won,"
                         + " so " + midLabel(started) + " stays planned."
                         + " Reload to see which sprint is active");
     }
@@ -670,6 +676,7 @@ public class ScrumSprintService {
      * which would reuse a deleted sprint's number and make velocity history
      * refer to two different sprints under one label.
      */
+    @SuppressWarnings("null")
     private int nextSprintNumber() {
 
         return sprintRepository.findFirstByOrderBySprintNumberDesc()
@@ -723,6 +730,7 @@ public class ScrumSprintService {
                         "Sprint " + sprintId + " was not found"));
     }
 
+    @SuppressWarnings("null")
     private ScrumTask requireTask(Long taskId) {
 
         return taskRepository.findById(taskId)

@@ -12,6 +12,8 @@ interface TestCase {
   assignedTo?: string | number;
   assignedToId?: string | number;
   assignedUserId?: string | number;
+  assignedToEmail?: string;
+  assignedToDept?: string;
   project?: string;
   createdAt?: string;
   scrumTaskId?: number;
@@ -26,6 +28,7 @@ interface StoredUser {
   fullName?: string;
   username?: string;
   email?: string;
+  department?: string;
 }
 
 const API_URL =
@@ -99,12 +102,17 @@ const getCurrentUser = (): StoredUser | null => {
     localStorage.getItem("email") ||
     undefined;
 
+  const department =
+    localStorage.getItem("department") ||
+    undefined;
+
   if (
     id ||
     employeeId ||
     name ||
     username ||
-    email
+    email ||
+    department
   ) {
     return {
       id,
@@ -112,6 +120,7 @@ const getCurrentUser = (): StoredUser | null => {
       name,
       username,
       email,
+      department,
     };
   }
 
@@ -229,46 +238,49 @@ const belongsToCurrentUser = (
     return false;
   }
 
-  const assignedValues = [
-    testCase.assignedTo,
-    testCase.assignedToId,
-    testCase.assignedUserId,
-  ]
-    .filter(
-      (value) =>
-        value !== undefined &&
-        value !== null &&
-        String(value).trim() !== ""
-    )
-    .map(normalize);
+  const currentUserId = user.id ?? user.userId ?? user.employeeId;
+  const currentUserEmail = user.email ? normalize(user.email) : "";
+  const currentUserName = user.name || user.fullName || user.username || "";
 
-  if (assignedValues.length === 0) {
+  const targetUserId = testCase.assignedUserId ?? testCase.assignedToId;
+  const targetEmail = testCase.assignedToEmail ? normalize(testCase.assignedToEmail) : "";
+
+  // 1. If testCase has an assigned User ID and user has an ID: strict decision!
+  if (
+    targetUserId !== undefined &&
+    targetUserId !== null &&
+    String(targetUserId).trim() !== "" &&
+    currentUserId !== undefined &&
+    currentUserId !== null &&
+    String(currentUserId).trim() !== ""
+  ) {
+    return String(targetUserId).trim() === String(currentUserId).trim();
+  }
+
+  // 2. If testCase has an assigned Email and user has an Email: strict decision!
+  if (targetEmail && currentUserEmail) {
+    return targetEmail === currentUserEmail;
+  }
+
+  // 3. If testCase.assignedTo is an email address: strict decision!
+  if (testCase.assignedTo && String(testCase.assignedTo).includes("@") && currentUserEmail) {
+    return normalize(testCase.assignedTo) === currentUserEmail;
+  }
+
+  // 4. If testCase has a specific email or ID assigned that did NOT match the logged-in user:
+  // Strictly REJECT it (NEVER fall through to plain name matching for someone else's task!)
+  if (targetEmail || (targetUserId !== undefined && targetUserId !== null && String(targetUserId).trim() !== "")) {
     return false;
   }
 
-  const userValues = [
-    user.id,
-    user.userId,
-    user.employeeId,
-    user.name,
-    user.fullName,
-    user.username,
-    user.email,
-  ]
-    .filter(
-      (value) =>
-        value !== undefined &&
-        value !== null &&
-        String(value).trim() !== ""
-    )
-    .map(normalize);
+  // 5. Fallback ONLY for legacy tasks that have NO email and NO user ID:
+  if (testCase.assignedTo && currentUserName) {
+    const normAssigned = normalize(testCase.assignedTo);
+    const normName = normalize(currentUserName);
+    return normAssigned === normName;
+  }
 
-  return assignedValues.some(
-    (assignedValue) =>
-      userValues.includes(
-        assignedValue
-      )
-  );
+  return false;
 };
 
 /* =========================================================
@@ -276,31 +288,20 @@ const belongsToCurrentUser = (
 ========================================================= */
 
 const QATestCases = () => {
-  const [
-    testCases,
-    setTestCases,
-  ] = useState<TestCase[]>([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
-
-  const [updatingId, setUpdatingId] =
-    useState<number | null>(null);
-
-  const [currentUser, setCurrentUser] =
-    useState<StoredUser | null>(null);
+  const [allTestCases, setAllTestCases] = useState<TestCase[]>([]);
+  const [testCases, setTestCases] = useState<TestCase[]>([]);
+  const [filterMode, setFilterMode] = useState<"myTasks" | "all">("myTasks");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
 
   /* =======================================================
      LOAD USER
   ======================================================= */
 
   useEffect(() => {
-    const user =
-      getCurrentUser();
-
+    const user = getCurrentUser();
     setCurrentUser(user);
   }, []);
 
@@ -308,101 +309,58 @@ const QATestCases = () => {
      LOAD TEST CASES
   ======================================================= */
 
-  const loadTestCases =
-    useCallback(async () => {
-      try {
-        setLoading(true);
-        setError("");
+  const loadTestCases = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-        const user =
-          getCurrentUser();
+      const user = getCurrentUser();
+      setCurrentUser(user);
 
-        setCurrentUser(user);
+      const response = await axios.get(API_URL, getAxiosConfig());
+      const result = response.data;
 
-        /*
-         * Calling this endpoint causes the backend to:
-         *
-         * Scrum Master tasks
-         *        ↓
-         * QA synchronization
-         *        ↓
-         * qa_test_cases
-         *
-         * before returning the QA data.
-         */
-        const response =
-          await axios.get(
-            API_URL,
-            getAxiosConfig()
-          );
+      const rawList: TestCase[] = Array.isArray(result)
+        ? result
+        : Array.isArray(result?.data)
+        ? result.data
+        : Array.isArray(result?.testCases)
+        ? result.testCases
+        : [];
 
-        const result =
-          response.data;
+      setAllTestCases(rawList);
+    } catch (err: any) {
+      console.error("Failed to load test cases:", err);
 
-        const allTestCases: TestCase[] =
-          Array.isArray(result)
-            ? result
-            : Array.isArray(
-                result?.data
-              )
-            ? result.data
-            : Array.isArray(
-                result?.testCases
-              )
-            ? result.testCases
-            : [];
-
-        /*
-         * Only show records assigned to
-         * the currently logged-in QA user.
-         */
-        const myTestCases =
-          allTestCases.filter(
-            (testCase) =>
-              belongsToCurrentUser(
-                testCase,
-                user
-              )
-          );
-
-        setTestCases(
-          myTestCases
-        );
-      } catch (err: any) {
-        console.error(
-          "Failed to load test cases:",
-          err
-        );
-
-        if (
-          err?.response?.status ===
-          401
-        ) {
-          setError(
-            "Authentication required. Please login again."
-          );
-        } else if (
-          err?.response?.status ===
-          403
-        ) {
-          setError(
-            "Access denied. Please login again."
-          );
-        } else {
-          setError(
-            "Failed to load test cases."
-          );
-        }
-
-        setTestCases([]);
-      } finally {
-        setLoading(false);
+      if (err?.response?.status === 401) {
+        setError("Authentication required. Please login again.");
+      } else if (err?.response?.status === 403) {
+        setError("Access denied. Please login again.");
+      } else {
+        setError("Failed to load test cases.");
       }
-    }, []);
+
+      setAllTestCases([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadTestCases();
   }, [loadTestCases]);
+
+  // Recalculate filtered test cases based on filterMode and currentUser
+  useEffect(() => {
+    if (filterMode === "all") {
+      setTestCases(allTestCases);
+    } else {
+      const myCases = allTestCases.filter((tc) =>
+        belongsToCurrentUser(tc, currentUser)
+      );
+      setTestCases(myCases);
+    }
+  }, [allTestCases, filterMode, currentUser]);
 
   /* =======================================================
      UPDATE STATUS
@@ -413,6 +371,9 @@ const QATestCases = () => {
     status:
       | "Passed"
       | "Failed"
+      | "In Testing"
+      | "Pending"
+      | "Blocked"
   ) => {
     try {
       setUpdatingId(id);
@@ -576,21 +537,84 @@ const QATestCases = () => {
         </div>
       )}
 
-      {currentUser && (
-        <div
-          className="
-            mb-3
-            text-[10px]
-            text-[#8d98a8]
-          "
-        >
-          Showing tasks assigned to{" "}
-          <span className="font-semibold text-[#111827]">
-            {currentUser.name ||
-              currentUser.fullName ||
-              currentUser.username ||
-              currentUser.email}
-          </span>
+      {/* Top Filter & Sync Toolbar */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-sm">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFilterMode("myTasks")}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+              filterMode === "myTasks"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            My Assigned Tasks (
+            {
+              allTestCases.filter((tc) =>
+                belongsToCurrentUser(tc, currentUser)
+              ).length
+            }
+            )
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterMode("all")}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+              filterMode === "all"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            All Team Tasks ({allTestCases.length})
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {currentUser && (
+            <span className="text-[11px] text-slate-400">
+              Logged in as:{" "}
+              <strong className="text-slate-700">
+                {currentUser.name ||
+                  currentUser.fullName ||
+                  currentUser.username ||
+                  currentUser.email}
+              </strong>
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => loadTestCases()}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+          >
+            <span>{loading ? "Syncing..." : "Sync Tasks"}</span>
+          </button>
+        </div>
+      </div>
+
+      {testCases.length === 0 && !loading && (
+        <div className="my-6 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-8 text-center">
+          <p className="text-sm font-semibold text-slate-700 mb-1">
+            {filterMode === "myTasks"
+              ? "No test tasks assigned to you right now"
+              : "No test tasks found"}
+          </p>
+          <p className="text-xs text-slate-500 max-w-sm mb-4">
+            {filterMode === "myTasks"
+              ? "Tasks assigned to you by the Scrum Master will automatically appear here."
+              : "Tasks created in the Scrum Board will be automatically synchronized here."}
+          </p>
+          {filterMode === "myTasks" && allTestCases.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterMode("all")}
+              className="rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 cursor-pointer"
+            >
+              View All {allTestCases.length} Team Tasks
+            </button>
+          )}
         </div>
       )}
 
@@ -754,6 +778,38 @@ const QATestCases = () => {
                   </div>
 
                   <div className="flex items-center gap-1.5">
+
+                    {testCase.status !== "In Testing" && (
+                      <button
+                        type="button"
+                        disabled={
+                          updatingId ===
+                          testCase.id
+                        }
+                        onClick={() =>
+                          updateStatus(
+                            testCase.id,
+                            "In Testing"
+                          )
+                        }
+                        className="
+                          h-6
+                          rounded-[6px]
+                          border
+                          border-[#fed7aa]
+                          bg-[#fffaf0]
+                          px-2
+                          text-[9px]
+                          font-semibold
+                          text-[#ea580c]
+                        "
+                      >
+                        {updatingId ===
+                        testCase.id
+                          ? "..."
+                          : "In Test"}
+                      </button>
+                    )}
 
                     {testCase.status !==
                       "Passed" && (
@@ -946,6 +1002,38 @@ const QATestCases = () => {
                 </div>
 
                 <div className="flex gap-2 mt-3 pt-3 border-t border-[#eeeeee]">
+
+                  {testCase.status !== "In Testing" && (
+                    <button
+                      type="button"
+                      disabled={
+                        updatingId ===
+                        testCase.id
+                      }
+                      onClick={() =>
+                        updateStatus(
+                          testCase.id,
+                          "In Testing"
+                        )
+                      }
+                      className="
+                        h-[26px]
+                        rounded-[6px]
+                        border
+                        border-[#fed7aa]
+                        bg-[#fffaf0]
+                        px-3
+                        text-[9px]
+                        font-semibold
+                        text-[#ea580c]
+                      "
+                    >
+                      {updatingId ===
+                      testCase.id
+                        ? "..."
+                        : "In Test"}
+                    </button>
+                  )}
 
                   {testCase.status !==
                     "Passed" && (

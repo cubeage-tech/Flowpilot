@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { Header } from './components/common/Header';
 import { HeroSection } from './components/HeroSection';
 import { ProblemSection } from './components/ProblemSection';
@@ -15,45 +15,93 @@ import { SecuritySection } from './components/SecuritySection';
 import { PricingSection } from './components/PricingSection';
 import { BottomCTASection } from './components/BottomCTASection';
 import { Footer } from './components/common/Footer';
-import { DemoModal } from './components/DemoModal';
-import { LoginPage } from './components/common/LoginPage';
-import { SuperAdminLayout } from './components/superadmin/SuperAdminLayout';
-import { AdminLayout } from './components/admin/AdminLayout';
-import { PMLayout } from './components/pm/PMLayout';
-import { ScrumMasterLayout } from './components/scrummaster/ScrumMasterLayout';
-import { DeveloperLayout } from './components/developer/DeveloperLayout';
-import { QALayout } from './components/qa/QALayout';
-import { ViewerLayout } from './components/viewer/ViewerLayout';
+import { normalizeRole, APP_VIEWS, type AppView } from './routes/routes';
+
+// ============================================
+// LAZY-LOADED COMPONENTS & DASHBOARDS
+// Code-split to drastically speed up initial page load
+// ============================================
+const DemoModal = lazy(() => import('./components/DemoModal').then(m => ({ default: m.DemoModal })));
+const LoginPage = lazy(() => import('./components/common/LoginPage').then(m => ({ default: m.LoginPage })));
+const SuperAdminLayout = lazy(() => import('./components/superadmin/SuperAdminLayout').then(m => ({ default: m.SuperAdminLayout })));
+const AdminLayout = lazy(() => import('./components/admin/AdminLayout').then(m => ({ default: m.AdminLayout })));
+const PMLayout = lazy(() => import('./components/pm/PMLayout').then(m => ({ default: m.PMLayout })));
+const ScrumMasterLayout = lazy(() => import('./components/scrummaster/ScrumMasterLayout').then(m => ({ default: m.ScrumMasterLayout })));
+const DeveloperLayout = lazy(() => import('./components/developer/DeveloperLayout').then(m => ({ default: m.DeveloperLayout })));
+const QALayout = lazy(() => import('./components/qa/QALayout').then(m => ({ default: m.QALayout })));
+const ViewerLayout = lazy(() => import('./components/viewer/ViewerLayout').then(m => ({ default: m.ViewerLayout })));
+
+// Sleek loading placeholder while dynamic chunks load
+function PageLoadingFallback() {
+  return (
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white">
+      <div className="relative flex items-center justify-center">
+        <div className="w-14 h-14 rounded-full border-4 border-teal-500/20 border-t-teal-400 animate-spin" />
+        <div className="absolute w-6 h-6 rounded-full bg-teal-500/20 animate-ping" />
+      </div>
+      <p className="mt-4 text-xs font-bold tracking-widest text-slate-400 uppercase">
+        Loading Flowpilot...
+      </p>
+    </div>
+  );
+}
 
 export function App() {
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'dashboard'>('landing');
+  const [currentView, setCurrentView] = useState<AppView>(APP_VIEWS.LANDING);
   const [activeRole, setActiveRole] = useState<string>('');
   const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
 
-  if (currentView === 'login') {
+  if (currentView === APP_VIEWS.LOGIN) {
     return (
-      <LoginPage 
-        onBackToHome={() => setCurrentView('landing')} 
-        onLoginSuccess={(role) => {
-          setActiveRole(role);
-          setCurrentView('dashboard');
-        }}
-      />
+      <Suspense fallback={<PageLoadingFallback />}>
+        <LoginPage 
+          onBackToHome={() => setCurrentView(APP_VIEWS.LANDING)} 
+          onLoginSuccess={(role) => {
+            setActiveRole(role);
+            setCurrentView(APP_VIEWS.DASHBOARD);
+          }}
+        />
+      </Suspense>
     );
   }
 
-  if (currentView === 'dashboard' && activeRole) {
-    const logout = () => { setActiveRole(''); setCurrentView('landing'); };
-    switch (activeRole) {
-      case 'Super Admin': return <SuperAdminLayout onLogout={logout} />;
-      case 'Admin': return <AdminLayout onLogout={logout} />;
-      case 'Project Manager': return <PMLayout onLogout={logout} />;
-      case 'Scrum Master': return <ScrumMasterLayout onLogout={logout} />;
-      case 'Developer': return <DeveloperLayout onLogout={logout} />;
-      case 'QA Engineer': return <QALayout onLogout={logout} />;
-      case 'Viewer': return <ViewerLayout onLogout={logout} />;
-      default: return <SuperAdminLayout onLogout={logout} />;
+  if (currentView === APP_VIEWS.DASHBOARD && activeRole) {
+    const logout = () => { setActiveRole(''); setCurrentView(APP_VIEWS.LANDING); };
+    const norm = normalizeRole(activeRole);
+
+    let dashboardComponent;
+    switch (norm) {
+      case 'SUPER_ADMIN':
+        dashboardComponent = <SuperAdminLayout onLogout={logout} />;
+        break;
+      case 'ADMIN':
+        dashboardComponent = <AdminLayout onLogout={logout} />;
+        break;
+      case 'PROJECT_MANAGER':
+        dashboardComponent = <PMLayout onLogout={logout} />;
+        break;
+      case 'SCRUM_MASTER':
+        dashboardComponent = <ScrumMasterLayout onLogout={logout} />;
+        break;
+      case 'DEVELOPER':
+        dashboardComponent = <DeveloperLayout onLogout={logout} />;
+        break;
+      case 'QA_ENGINEER':
+        dashboardComponent = <QALayout onLogout={logout} />;
+        break;
+      case 'VIEWER':
+        dashboardComponent = <ViewerLayout onLogout={logout} />;
+        break;
+      default:
+        dashboardComponent = <SuperAdminLayout onLogout={logout} />;
+        break;
     }
+
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        {dashboardComponent}
+      </Suspense>
+    );
   }
 
   return (
@@ -61,7 +109,7 @@ export function App() {
       {/* Floating Top Navigation */}
       <Header 
         onOpenDemo={() => setIsDemoModalOpen(true)} 
-        onOpenLogin={() => setCurrentView('login')}
+        onOpenLogin={() => setCurrentView(APP_VIEWS.LOGIN)}
       />
 
       {/* Main Landing Sections */}
@@ -86,10 +134,14 @@ export function App() {
       <Footer />
 
       {/* Interactive Demo Video / Onboarding Modal */}
-      <DemoModal
-        isOpen={isDemoModalOpen}
-        onClose={() => setIsDemoModalOpen(false)}
-      />
+      {isDemoModalOpen && (
+        <Suspense fallback={null}>
+          <DemoModal
+            isOpen={isDemoModalOpen}
+            onClose={() => setIsDemoModalOpen(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

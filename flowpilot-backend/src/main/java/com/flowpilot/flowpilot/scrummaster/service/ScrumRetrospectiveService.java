@@ -60,7 +60,24 @@ public class ScrumRetrospectiveService {
     @Transactional(readOnly = true)
     public ScrumRetrospectiveDto.Response getRetrospective(Long sprintId) {
 
-        ScrumSprint sprint = resolveSprint(sprintId);
+        ScrumSprint sprint;
+        try {
+            sprint = resolveSprint(sprintId);
+        } catch (ScrumNotFoundException e) {
+            if (sprintId == null) {
+                return new ScrumRetrospectiveDto.Response(
+                        null,
+                        "No Sprint",
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        taskService.listMembers()
+                );
+            }
+            throw e;
+        }
 
         // One query, then split by kind: three round trips would only cost more
         // to arrive at the same three lists
@@ -153,6 +170,7 @@ public class ScrumRetrospectiveService {
 
     /** Only the fields that were sent are changed. */
     @Transactional
+    @SuppressWarnings("null")
     public ScrumRetrospectiveDto.Item updateItem(
             Long itemId,
             ScrumRetrospectiveDto.UpdateRequest request
@@ -217,6 +235,7 @@ public class ScrumRetrospectiveService {
 
     /** Removes one item and hands back what was removed. */
     @Transactional
+    @SuppressWarnings("null")
     public ScrumRetrospectiveDto.Item deleteItem(Long itemId) {
 
         ScrumRetrospective item = requireItem(itemId);
@@ -267,10 +286,12 @@ public class ScrumRetrospectiveService {
                             "Sprint " + sprintId + " was not found."));
         }
 
-        return sprintRepository.findFirstByStatus(ScrumSprint.Status.ACTIVE)
+        // The most recent sprint is also the one a retrospective is usually
+        // about, so the fallback is the right default here rather than a
+        // concession to it.
+        return sprintRepository.findCurrentOrLatest()
                 .orElseThrow(() -> new ScrumNotFoundException(
-                        "No active sprint. Name the sprint to retrospect on "
-                                + "with sprintId."));
+                        "No sprints yet. Create one on the Sprints screen."));
     }
 
 
@@ -287,6 +308,7 @@ public class ScrumRetrospectiveService {
     }
 
 
+    @SuppressWarnings("null")
     private User requireUser(Long ownerId) {
 
         return userRepository.findById(ownerId)

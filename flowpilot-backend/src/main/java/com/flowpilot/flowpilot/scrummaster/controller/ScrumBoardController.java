@@ -42,11 +42,12 @@ public class ScrumBoardController {
     // sprint chosen in the sprint selector.
     //
     // GET /api/scrummaster/board
-    // GET /api/scrummaster/board?sprintId=3
+    // GET /api/scrummaster/board?projectId=17&sprintId=3
     //     &assigneeId=&priority=&label=&search=&unassigned=
     // ============================================
     @GetMapping
     public ResponseEntity<ScrumBoardDto.Response> getBoard(
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) Long sprintId,
             @RequestParam(required = false) Long assigneeId,
             @RequestParam(required = false) String priority,
@@ -65,7 +66,7 @@ public class ScrumBoardController {
                 );
 
         return ResponseEntity.ok(
-                boardService.getBoard(sprintId, filter)
+                boardService.getBoard(projectId, sprintId, filter)
         );
     }
 
@@ -87,6 +88,17 @@ public class ScrumBoardController {
         );
     }
 
+    @PatchMapping("/tasks/{taskId}/move")
+    public ResponseEntity<ScrumTaskDto.Card> moveTaskAlias(
+            @PathVariable Long taskId,
+            @RequestBody ScrumBoardDto.MoveRequest request
+    ) {
+
+        return ResponseEntity.ok(
+                boardService.moveTask(taskId, request)
+        );
+    }
+
 
     // ============================================
     // PUT
@@ -99,6 +111,7 @@ public class ScrumBoardController {
     @PutMapping("/wip-limits")
     public ResponseEntity<ScrumBoardDto.Response> setWipLimit(
             @RequestBody ScrumBoardDto.WipLimitRequest request,
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) Long sprintId,
             @RequestParam(required = false) Long assigneeId,
             @RequestParam(required = false) String priority,
@@ -119,7 +132,7 @@ public class ScrumBoardController {
                 );
 
         return ResponseEntity.ok(
-                boardService.setWipLimit(request, sprintId, filter)
+                boardService.setWipLimit(request, projectId, sprintId, filter)
         );
     }
 

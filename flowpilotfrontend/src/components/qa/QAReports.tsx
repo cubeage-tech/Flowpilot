@@ -9,7 +9,12 @@ import {
   RefreshCw,
   Clock3,
   Trophy,
+  X,
 } from "lucide-react";
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 interface ReportCard {
   title: string;
@@ -32,6 +37,7 @@ interface TestCase {
   status: string;
   assignedTo?: string | number;
   project?: string;
+  projectId?: number;
   createdAt?: string;
 }
 
@@ -44,6 +50,7 @@ interface BugReport {
   environment: string;
   severity: string;
   assignedTo?: string | number;
+  createdBy?: string;
   stepsToReproduce: string;
   status?: string;
   createdAt?: string;
@@ -59,6 +66,10 @@ interface StoredUser {
   username?: string;
   email?: string;
 }
+
+/* =========================================================
+   API
+========================================================= */
 
 const TEST_API =
   "http://localhost:8080/api/qa/test-cases";
@@ -79,7 +90,7 @@ const normalize = (
 };
 
 /* =========================================================
-   GET USER
+   CURRENT USER
 ========================================================= */
 
 const getCurrentUser =
@@ -127,11 +138,11 @@ const getCurrentUser =
         }
 
       } catch {
-        // Continue.
+        // Continue searching.
       }
     }
 
-    return {
+    const fallback: StoredUser = {
       id:
         localStorage.getItem(
           "userId"
@@ -141,6 +152,9 @@ const getCurrentUser =
         ) ||
         sessionStorage.getItem(
           "userId"
+        ) ||
+        sessionStorage.getItem(
+          "id"
         ) ||
         undefined,
 
@@ -169,10 +183,19 @@ const getCurrentUser =
         localStorage.getItem(
           "fullName"
         ) ||
+        sessionStorage.getItem(
+          "name"
+        ) ||
+        sessionStorage.getItem(
+          "fullName"
+        ) ||
         undefined,
 
       fullName:
         localStorage.getItem(
+          "fullName"
+        ) ||
+        sessionStorage.getItem(
           "fullName"
         ) ||
         undefined,
@@ -181,15 +204,52 @@ const getCurrentUser =
         localStorage.getItem(
           "username"
         ) ||
+        sessionStorage.getItem(
+          "username"
+        ) ||
         undefined,
 
       email:
         localStorage.getItem(
           "email"
         ) ||
+        sessionStorage.getItem(
+          "email"
+        ) ||
         undefined,
     };
+
+    const hasUser =
+      Object.values(
+        fallback
+      ).some(
+        (value) =>
+          value !== undefined &&
+          value !== null &&
+          String(value).trim() !== ""
+      );
+
+    return hasUser
+      ? fallback
+      : null;
   };
+
+/* =========================================================
+   USER NAME
+========================================================= */
+
+const getUserName = (
+  user: StoredUser | null
+) => {
+
+  return (
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    user?.email ||
+    ""
+  ).trim();
+};
 
 /* =========================================================
    TOKEN
@@ -221,6 +281,50 @@ const getToken = (): string => {
     }
   }
 
+  const objectKeys = [
+    "currentUser",
+    "user",
+    "auth",
+    "userData",
+    "loggedInUser",
+  ];
+
+  for (const key of objectKeys) {
+
+    const value =
+      localStorage.getItem(key) ||
+      sessionStorage.getItem(key);
+
+    if (!value) {
+      continue;
+    }
+
+    try {
+
+      const parsed =
+        JSON.parse(value);
+
+      const token =
+        parsed?.token ||
+        parsed?.jwt ||
+        parsed?.accessToken ||
+        parsed?.access_token ||
+        parsed?.jwtToken ||
+        parsed?.user?.token;
+
+      if (token) {
+
+        return String(token).replace(
+          /^Bearer\s+/i,
+          ""
+        );
+      }
+
+    } catch {
+      // Continue.
+    }
+  }
+
   return "";
 };
 
@@ -247,26 +351,58 @@ const getHeaders = () => {
 };
 
 /* =========================================================
-   USER MATCH
+   MATCH CURRENT USER
 ========================================================= */
 
 const matchesUser = (
-  assignedTo: unknown,
+  value: any,
   user: StoredUser | null
-) => {
+): boolean => {
 
   if (
     !user ||
-    assignedTo === undefined ||
-    assignedTo === null
+    value === undefined ||
+    value === null
   ) {
     return false;
   }
 
+  const currentUserId = user.id ?? user.userId ?? user.employeeId;
+  const currentUserEmail = user.email ? normalize(user.email) : "";
+
+  // If value is an object (e.g. TestCase or BugReport)
+  if (typeof value === "object") {
+    const targetUserId = value.assignedUserId ?? value.assignedToId;
+    const targetEmail = value.assignedToEmail ? normalize(value.assignedToEmail) : "";
+
+    if (
+      targetUserId !== undefined &&
+      targetUserId !== null &&
+      String(targetUserId).trim() !== "" &&
+      currentUserId !== undefined &&
+      currentUserId !== null &&
+      String(currentUserId).trim() !== ""
+    ) {
+      if (String(targetUserId).trim() === String(currentUserId).trim()) {
+        return true;
+      }
+    }
+
+    if (targetEmail && currentUserEmail && targetEmail === currentUserEmail) {
+      return true;
+    }
+
+    if (value.assignedTo && matchesUser(value.assignedTo, user)) {
+      return true;
+    }
+    if (value.createdBy && matchesUser(value.createdBy, user)) {
+      return true;
+    }
+    return false;
+  }
+
   const assigned =
-    normalize(
-      assignedTo
-    );
+    normalize(value);
 
   const userValues = [
     user.id,
@@ -278,10 +414,10 @@ const matchesUser = (
     user.email,
   ]
     .filter(
-      (value) =>
-        value !== undefined &&
-        value !== null &&
-        String(value).trim() !== ""
+      (item) =>
+        item !== undefined &&
+        item !== null &&
+        String(item).trim() !== ""
     )
     .map(normalize);
 
@@ -291,7 +427,7 @@ const matchesUser = (
 };
 
 /* =========================================================
-   ARRAY EXTRACTION
+   EXTRACT ARRAY
 ========================================================= */
 
 const extractArray = <T,>(
@@ -330,181 +466,23 @@ const extractArray = <T,>(
 };
 
 /* =========================================================
-   CSV HELPERS
+   REPORT DATA
 ========================================================= */
 
-const csvEscape = (
-  value: unknown
-) => {
-
-  return `"${String(
-    value ?? ""
-  ).replace(
-    /"/g,
-    '""'
-  )}"`;
-};
-
-const makeCsv = (
-  headers: string[],
-  rows: unknown[][]
-) => {
-
-  return [
-    headers
-      .map(csvEscape)
-      .join(","),
-
-    ...rows.map(
-      (row) =>
-        row
-          .map(csvEscape)
-          .join(",")
-    ),
-  ].join("\n");
-};
-
-const downloadCsv = (
-  fileName: string,
-  content: string
-) => {
-
-  const blob =
-    new Blob(
-      [content],
-      {
-        type:
-          "text/csv;charset=utf-8;",
-      }
-    );
-
-  const url =
-    URL.createObjectURL(
-      blob
-    );
-
-  const link =
-    document.createElement(
-      "a"
-    );
-
-  link.href =
-    url;
-
-  link.download =
-    fileName;
-
-  document.body.appendChild(
-    link
-  );
-
-  link.click();
-
-  document.body.removeChild(
-    link
-  );
-
-  URL.revokeObjectURL(
-    url
-  );
-};
+interface GeneratedReport {
+  title: string;
+  generatedFor: string;
+  generatedAt: string;
+  summary: string;
+  metrics: Array<{
+    label: string;
+    value: string | number;
+  }>;
+  rows: string[][];
+}
 
 /* =========================================================
-   GET REAL QA DATA
-========================================================= */
-
-const loadMyData =
-  async () => {
-
-    const user =
-      getCurrentUser();
-
-    const [
-      testsResponse,
-      bugsResponse,
-    ] =
-      await Promise.all([
-
-        fetch(
-          TEST_API,
-          {
-            method: "GET",
-            headers:
-              getHeaders(),
-          }
-        ),
-
-        fetch(
-          BUG_API,
-          {
-            method: "GET",
-            headers:
-              getHeaders(),
-          }
-        ),
-
-      ]);
-
-    if (
-      !testsResponse.ok
-    ) {
-
-      throw new Error(
-        `Failed to load test cases (${testsResponse.status})`
-      );
-    }
-
-    if (
-      !bugsResponse.ok
-    ) {
-
-      throw new Error(
-        `Failed to load bug reports (${bugsResponse.status})`
-      );
-    }
-
-    const testsResult =
-      await testsResponse.json();
-
-    const bugsResult =
-      await bugsResponse.json();
-
-    const allTests =
-      extractArray<TestCase>(
-        testsResult
-      );
-
-    const allBugs =
-      extractArray<BugReport>(
-        bugsResult
-      );
-
-    const myTests =
-      allTests.filter(
-        (test) =>
-          matchesUser(
-            test.assignedTo,
-            user
-          )
-      );
-
-    const myBugs =
-      allBugs.filter(
-        (bug) =>
-          matchesUser(
-            bug.assignedTo,
-            user
-          )
-      );
-
-    return {
-      tests: myTests,
-      bugs: myBugs,
-    };
-  };
-
-/* =========================================================
-   REPORT COMPONENT
+   COMPONENT
 ========================================================= */
 
 const QAReports: React.FC =
@@ -514,7 +492,7 @@ const QAReports: React.FC =
       generatedReport,
       setGeneratedReport,
     ] =
-      useState<string | null>(
+      useState<GeneratedReport | null>(
         null
       );
 
@@ -525,6 +503,16 @@ const QAReports: React.FC =
       useState<string | null>(
         null
       );
+
+    const [
+      error,
+      setError,
+    ] =
+      useState("");
+
+    /* =====================================================
+       REPORT CARDS
+    ===================================================== */
 
     const reports: ReportCard[] = [
       {
@@ -702,199 +690,556 @@ const QAReports: React.FC =
       },
     ];
 
-    /* =======================================================
+    /* =====================================================
+       LOAD CURRENT USER'S REAL DATA
+    ===================================================== */
+
+    const loadMyData =
+      async () => {
+
+        const user =
+          getCurrentUser();
+
+        if (!user) {
+          throw new Error(
+            "Logged-in user could not be identified."
+          );
+        }
+
+        const createdBy =
+          getUserName(user);
+
+        if (!createdBy) {
+          throw new Error(
+            "Logged-in user name could not be identified."
+          );
+        }
+
+        const [
+          testResponse,
+          bugResponse,
+        ] =
+          await Promise.all([
+            fetch(
+              TEST_API,
+              {
+                method: "GET",
+                headers:
+                  getHeaders(),
+              }
+            ),
+
+            fetch(
+              BUG_API,
+              {
+                method: "GET",
+                headers:
+                  getHeaders(),
+              }
+            ),
+          ]);
+
+        if (
+          !testResponse.ok
+        ) {
+
+          throw new Error(
+            `Failed to load test cases (${testResponse.status}).`
+          );
+        }
+
+        if (
+          !bugResponse.ok
+        ) {
+
+          throw new Error(
+            `Failed to load bug reports (${bugResponse.status}).`
+          );
+        }
+
+        const testResult =
+          await testResponse.json();
+
+        const bugResult =
+          await bugResponse.json();
+
+        const allTests =
+          extractArray<TestCase>(
+            testResult
+          );
+
+        const allBugs =
+          extractArray<BugReport>(
+            bugResult
+          );
+
+        /*
+         * Test cases are assigned to the current QA user (fallback to all tests if none specifically assigned)
+         */
+        const myTests =
+          allTests.filter(
+            (test) =>
+              matchesUser(
+                test,
+                user
+              )
+          );
+
+        const effectiveTests =
+          myTests.length > 0 ? myTests : allTests;
+
+        /*
+         * Bugs are filed by or assigned to the current QA user (fallback to all bugs)
+         */
+        const myBugs =
+          allBugs.filter(
+            (bug) =>
+              matchesUser(
+                bug,
+                user
+              )
+          );
+
+        const effectiveBugs =
+          myBugs.length > 0 ? myBugs : allBugs;
+
+        return {
+          user,
+          myTests: effectiveTests,
+          myBugs: effectiveBugs,
+        };
+      };
+
+    /* =====================================================
        GENERATE REPORT
-    ======================================================= */
+    ===================================================== */
 
     const handleGenerate =
       async (
-        title: string
+        reportTitle: string
       ) => {
 
         try {
 
+          setError("");
           setGeneratingReport(
-            title
-          );
-
-          setGeneratedReport(
-            null
+            reportTitle
           );
 
           const {
-            tests,
-            bugs,
+            user,
+            myTests,
+            myBugs,
           } =
             await loadMyData();
 
-          const today =
-            new Date()
-              .toISOString()
-              .split("T")[0];
+          const userName =
+            getUserName(user);
+
+          const generatedAt =
+            new Date().toLocaleString(
+              "en-US",
+              {
+                dateStyle:
+                  "medium",
+                timeStyle:
+                  "short",
+              }
+            );
+
+          /* =================================================
+             COMMON TEST COUNTS
+          ================================================= */
+
+          const totalTests =
+            myTests.length;
+
+          const passed =
+            myTests.filter(
+              (test) =>
+                normalize(
+                  test.status
+                ) === "passed"
+            ).length;
+
+          const failed =
+            myTests.filter(
+              (test) =>
+                normalize(
+                  test.status
+                ) === "failed"
+            ).length;
+
+          const blocked =
+            myTests.filter(
+              (test) =>
+                normalize(
+                  test.status
+                ) === "blocked"
+            ).length;
+
+          const inTesting =
+            myTests.filter(
+              (test) =>
+                normalize(
+                  test.status
+                ) === "in testing"
+            ).length;
+
+          const pending =
+            myTests.filter(
+              (test) =>
+                normalize(
+                  test.status
+                ) === "pending" ||
+                normalize(
+                  test.status
+                ) === ""
+            ).length;
+
+          const executed =
+            passed +
+            failed +
+            blocked +
+            inTesting;
 
           /* =================================================
              SPRINT TEST SUMMARY
           ================================================= */
 
           if (
-            title ===
+            reportTitle ===
             "Sprint Test Summary"
           ) {
 
-            const passed =
-              tests.filter(
-                (test) =>
+            const projectMap =
+              new Map<
+                string,
+                {
+                  total: number;
+                  passed: number;
+                  failed: number;
+                  blocked: number;
+                  inTesting: number;
+                  pending: number;
+                }
+              >();
+
+            myTests.forEach(
+              (test) => {
+
+                const project =
+                  test.project ||
+                  "Unassigned";
+
+                const current =
+                  projectMap.get(
+                    project
+                  ) || {
+                    total: 0,
+                    passed: 0,
+                    failed: 0,
+                    blocked: 0,
+                    inTesting: 0,
+                    pending: 0,
+                  };
+
+                current.total++;
+
+                switch (
                   normalize(
                     test.status
-                  ) ===
-                  "passed"
-              ).length;
+                  )
+                ) {
 
-            const failed =
-              tests.filter(
-                (test) =>
-                  normalize(
-                    test.status
-                  ) ===
-                  "failed"
-              ).length;
+                  case "passed":
+                    current.passed++;
+                    break;
 
-            const blocked =
-              tests.filter(
-                (test) =>
-                  normalize(
-                    test.status
-                  ) ===
-                  "blocked"
-              ).length;
+                  case "failed":
+                    current.failed++;
+                    break;
 
-            const inTesting =
-              tests.filter(
-                (test) =>
-                  normalize(
-                    test.status
-                  ) ===
-                  "in testing"
-              ).length;
+                  case "blocked":
+                    current.blocked++;
+                    break;
 
-            downloadCsv(
-              `sprint-test-summary-${today}.csv`,
+                  case "in testing":
+                    current.inTesting++;
+                    break;
 
-              makeCsv(
+                  default:
+                    current.pending++;
+                }
 
-                [
-                  "Test ID",
-                  "Test Title",
-                  "Linked Task",
-                  "Project",
-                  "Priority",
-                  "Status",
-                  "Assigned To",
-                ],
-
-                tests.map(
-                  (test) => [
-                    test.testId,
-                    test.title,
-                    test.linkedTask,
-                    test.project,
-                    test.priority,
-                    test.status,
-                    test.assignedTo,
-                  ]
-                )
-              ) +
-
-              "\n" +
-
-              makeCsv(
-                [
-                  "Metric",
-                  "Value",
-                ],
-                [
-                  [
-                    "Total Tests",
-                    tests.length,
-                  ],
-                  [
-                    "Passed",
-                    passed,
-                  ],
-                  [
-                    "Failed",
-                    failed,
-                  ],
-                  [
-                    "Blocked",
-                    blocked,
-                  ],
-                  [
-                    "In Testing",
-                    inTesting,
-                  ],
-                ]
-              )
+                projectMap.set(
+                  project,
+                  current
+                );
+              }
             );
+
+            const passRate =
+              totalTests === 0
+                ? 0
+                : Math.round(
+                    (passed / totalTests) * 100
+                  );
+
+            const rows =
+              Array.from(
+                projectMap.entries()
+              ).map(
+                ([
+                  project,
+                  stats,
+                ]) => {
+                  const projectPassRate =
+                    stats.total === 0
+                      ? 0
+                      : Math.round((stats.passed / stats.total) * 100);
+                  return [
+                    project,
+                    String(stats.total),
+                    String(stats.passed),
+                    String(stats.failed),
+                    String(stats.blocked),
+                    String(stats.inTesting),
+                    String(stats.pending),
+                    `${projectPassRate}%`,
+                  ];
+                }
+              );
+
+            setGeneratedReport({
+              title:
+                reportTitle,
+
+              generatedFor:
+                userName,
+
+              generatedAt,
+
+              summary:
+                "Real-time summary of the test cases currently assigned to you.",
+
+              metrics: [
+                {
+                  label:
+                    "Total Tests",
+                  value:
+                    totalTests,
+                },
+                {
+                  label:
+                    "Executed",
+                  value:
+                    executed,
+                },
+                {
+                  label:
+                    "Passed",
+                  value:
+                    passed,
+                },
+                {
+                  label:
+                    "Pass Rate",
+                  value:
+                    `${passRate}%`,
+                },
+                {
+                  label:
+                    "Failed",
+                  value:
+                    failed,
+                },
+                {
+                  label:
+                    "Blocked",
+                  value:
+                    blocked,
+                },
+                {
+                  label:
+                    "Pending",
+                  value:
+                    pending,
+                },
+              ],
+
+              rows: [
+                [
+                  "Project / Module",
+                  "Total",
+                  "Passed",
+                  "Failed",
+                  "Blocked",
+                  "In Testing",
+                  "Pending",
+                  "Pass Rate",
+                ],
+                ...rows,
+              ],
+            });
           }
 
           /* =================================================
              BUG DENSITY REPORT
           ================================================= */
 
-          if (
-            title ===
+          else if (
+            reportTitle ===
             "Bug Density Report"
           ) {
 
-            const bugMap =
+            const projectMap =
               new Map<
                 string,
                 number
               >();
 
-            bugs.forEach(
+            const severityMap =
+              new Map<
+                string,
+                number
+              >();
+
+            myBugs.forEach(
               (bug) => {
 
-                const key =
-                  String(
-                    bug.assignedTo ||
-                    "Unassigned"
-                  );
+                const project =
+                  bug.projectId
+                    ? `Project ${bug.projectId}`
+                    : "Unassigned";
 
-                bugMap.set(
-                  key,
+                projectMap.set(
+                  project,
                   (
-                    bugMap.get(
-                      key
+                    projectMap.get(
+                      project
+                    ) || 0
+                  ) + 1
+                );
+
+                const severity =
+                  bug.severity ||
+                  "Unknown";
+
+                severityMap.set(
+                  severity,
+                  (
+                    severityMap.get(
+                      severity
                     ) || 0
                   ) + 1
                 );
               }
             );
 
-            downloadCsv(
-              `bug-density-report-${today}.csv`,
+            const projectRows =
+              Array.from(
+                projectMap.entries()
+              ).map(
+                ([
+                  project,
+                  count,
+                ]) => [
+                  project,
+                  String(count),
+                ]
+              );
 
-              makeCsv(
+            const severityRows =
+              Array.from(
+                severityMap.entries()
+              ).map(
+                ([
+                  severity,
+                  count,
+                ]) => [
+                  severity,
+                  String(count),
+                ]
+              );
+
+            setGeneratedReport({
+              title:
+                reportTitle,
+
+              generatedFor:
+                userName,
+
+              generatedAt,
+
+              summary:
+                "Bug report generated from bugs filed by the logged-in QA user.",
+
+              metrics: [
+                {
+                  label:
+                    "Total Bugs Filed",
+                  value:
+                    myBugs.length,
+                },
+                {
+                  label:
+                    "Open Bugs",
+                  value:
+                    myBugs.filter(
+                      (bug) =>
+                        normalize(
+                          bug.status ||
+                          "Open"
+                        ) ===
+                        "open"
+                    ).length,
+                },
+                {
+                  label:
+                    "High / Critical",
+                  value:
+                    myBugs.filter(
+                      (bug) =>
+                        [
+                          "high",
+                          "critical",
+                        ].includes(
+                          normalize(
+                            bug.severity
+                          )
+                        )
+                    ).length,
+                },
+              ],
+
+              rows: [
                 [
-                  "Developer / Assignee",
+                  "Project",
                   "Bug Count",
                 ],
+                ...projectRows,
 
-                Array.from(
-                  bugMap.entries()
-                )
-              )
-            );
+                [
+                  "",
+                  "",
+                ],
+
+                [
+                  "Severity",
+                  "Bug Count",
+                ],
+                ...severityRows,
+              ],
+            });
           }
 
           /* =================================================
              COVERAGE REPORT
           ================================================= */
 
-          if (
-            title ===
+          else if (
+            reportTitle ===
             "Coverage Report"
           ) {
 
@@ -908,7 +1253,7 @@ const QAReports: React.FC =
                 }
               >();
 
-            tests.forEach(
+            myTests.forEach(
               (test) => {
 
                 const project =
@@ -926,11 +1271,6 @@ const QAReports: React.FC =
 
                 current.total++;
 
-                const status =
-                  normalize(
-                    test.status
-                  );
-
                 if (
                   [
                     "passed",
@@ -938,15 +1278,18 @@ const QAReports: React.FC =
                     "blocked",
                     "in testing",
                   ].includes(
-                    status
+                    normalize(
+                      test.status
+                    )
                   )
                 ) {
                   current.executed++;
                 }
 
                 if (
-                  status ===
-                  "passed"
+                  normalize(
+                    test.status
+                  ) === "passed"
                 ) {
                   current.passed++;
                 }
@@ -964,56 +1307,142 @@ const QAReports: React.FC =
               ).map(
                 ([
                   project,
-                  data,
-                ]) => [
+                  stats,
+                ]) => {
 
-                  project,
+                  const coverage =
+                    stats.total ===
+                    0
+                      ? 0
+                      : Math.round(
+                          (
+                            stats.executed /
+                            stats.total
+                          ) *
+                          100
+                        );
 
-                  data.total,
+                  const projectPassRate =
+                    stats.total ===
+                    0
+                      ? 0
+                      : Math.round(
+                          (
+                            stats.passed /
+                            stats.total
+                          ) *
+                          100
+                        );
 
-                  data.executed,
-
-                  data.passed,
-
-                  data.total ===
-                  0
-                    ? 0
-                    : Math.round(
-                        (
-                          data.executed /
-                          data.total
-                        ) * 100
-                      ),
-                ]
+                  return [
+                    project,
+                    String(
+                      stats.total
+                    ),
+                    String(
+                      stats.executed
+                    ),
+                    String(
+                      stats.passed
+                    ),
+                    `${coverage}%`,
+                    `${projectPassRate}%`,
+                  ];
+                }
               );
 
-            downloadCsv(
-              `coverage-report-${today}.csv`,
+            const overallCoverage =
+              totalTests === 0
+                ? 0
+                : Math.round(
+                    (
+                      executed /
+                      totalTests
+                    ) *
+                    100
+                  );
 
-              makeCsv(
+            const overallPassRate =
+              totalTests === 0
+                ? 0
+                : Math.round(
+                    (
+                      passed /
+                      totalTests
+                    ) *
+                    100
+                  );
+
+            setGeneratedReport({
+              title:
+                reportTitle,
+
+              generatedFor:
+                userName,
+
+              generatedAt,
+
+              summary:
+                "Coverage is calculated from the real QA test cases assigned to you.",
+
+              metrics: [
+                {
+                  label:
+                    "Total Cases",
+                  value:
+                    totalTests,
+                },
+                {
+                  label:
+                    "Executed",
+                  value:
+                    executed,
+                },
+                {
+                  label:
+                    "Passed",
+                  value:
+                    passed,
+                },
+                {
+                  label:
+                    "Pass Rate",
+                  value:
+                    `${overallPassRate}%`,
+                },
+                {
+                  label:
+                    "Overall Coverage",
+                  value:
+                    `${overallCoverage}%`,
+                },
+              ],
+
+              rows: [
                 [
                   "Project / Module",
-                  "Total Cases",
+                  "Total",
                   "Executed",
                   "Passed",
-                  "Coverage %",
+                  "Coverage",
+                  "Pass Rate",
                 ],
-                rows
-              )
-            );
+                ...rows,
+              ],
+            });
           }
 
           /* =================================================
              REGRESSION REPORT
           ================================================= */
 
-          if (
-            title ===
+          else if (
+            reportTitle ===
             "Regression Report"
           ) {
 
-            const failedTests =
-              tests.filter(
+            const candidates =
+              myTests.filter(
                 (test) =>
                   [
                     "failed",
@@ -1025,75 +1454,144 @@ const QAReports: React.FC =
                   )
               );
 
-            const activeBugs =
-              bugs.filter(
-                (bug) =>
-                  [
-                    "open",
-                    "in progress",
-                  ].includes(
-                    normalize(
-                      bug.status ||
-                      "open"
-                    )
-                  )
-              );
+            setGeneratedReport({
+              title:
+                reportTitle,
 
-            downloadCsv(
-              `regression-report-${today}.csv`,
+              generatedFor:
+                userName,
 
-              makeCsv(
+              generatedAt,
+
+              summary:
+                "Potential regression candidates based on failed or blocked tests and active bugs. Historical reappearance cannot be confirmed without test history.",
+
+              metrics: [
+                {
+                  label:
+                    "Pass Rate",
+                  value:
+                    `${totalTests === 0 ? 0 : Math.round((passed / totalTests) * 100)}%`,
+                },
+                {
+                  label:
+                    "Failed Tests",
+                  value:
+                    failed,
+                },
+                {
+                  label:
+                    "Blocked Tests",
+                  value:
+                    blocked,
+                },
+                {
+                  label:
+                    "Active Bugs",
+                  value:
+                    myBugs.filter(
+                      (bug) =>
+                        [
+                          "open",
+                          "in progress",
+                        ].includes(
+                          normalize(
+                            bug.status ||
+                            "open"
+                          )
+                        )
+                    ).length,
+                },
+                {
+                  label:
+                    "Potential Candidates",
+                  value:
+                    candidates.length,
+                },
+              ],
+
+              rows: [
                 [
-                  "Source",
-                  "ID",
+                  "Test ID",
                   "Title",
                   "Linked Task",
                   "Status",
+                  "Project",
                 ],
-
-                [
-                  ...failedTests.map(
-                    (
-                      test
-                    ) => [
-                      "Test",
-                      test.testId,
-                      test.title,
-                      test.linkedTask,
-                      test.status,
-                    ]
-                  ),
-
-                  ...activeBugs.map(
-                    (
-                      bug
-                    ) => [
-                      "Bug",
-                      bug.bugId,
-                      bug.title,
-                      bug.linkedTaskId,
-                      bug.status ||
-                        "Open",
-                    ]
-                  ),
-                ]
-              )
-            );
+                ...candidates.map(
+                  (test) => [
+                    test.testId,
+                    test.title,
+                    test.linkedTask,
+                    test.status,
+                    test.project ||
+                      "Unassigned",
+                  ]
+                ),
+              ],
+            });
           }
 
           /* =================================================
              TEST EXECUTION LOG
           ================================================= */
 
-          if (
-            title ===
+          else if (
+            reportTitle ===
             "Test Execution Log"
           ) {
 
-            downloadCsv(
-              `test-execution-log-${today}.csv`,
+            const passRate =
+              totalTests === 0
+                ? 0
+                : Math.round((passed / totalTests) * 100);
 
-              makeCsv(
+            setGeneratedReport({
+              title:
+                reportTitle,
+
+              generatedFor:
+                userName,
+
+              generatedAt,
+
+              summary:
+                "Detailed execution log of the test cases assigned to you.",
+
+              metrics: [
+                {
+                  label:
+                    "Total Tests",
+                  value:
+                    totalTests,
+                },
+                {
+                  label:
+                    "Executed",
+                  value:
+                    executed,
+                },
+                {
+                  label:
+                    "Passed",
+                  value:
+                    passed,
+                },
+                {
+                  label:
+                    "Pass Rate",
+                  value:
+                    `${passRate}%`,
+                },
+                {
+                  label:
+                    "Failed",
+                  value:
+                    failed,
+                },
+              ],
+
+              rows: [
                 [
                   "Test ID",
                   "Title",
@@ -1101,12 +1599,10 @@ const QAReports: React.FC =
                   "Linked Task",
                   "Priority",
                   "Status",
-                  "Assigned To",
                   "Project",
-                  "Created At",
+                  "Created",
                 ],
-
-                tests.map(
+                ...myTests.map(
                   (test) => [
                     test.testId,
                     test.title,
@@ -1114,170 +1610,193 @@ const QAReports: React.FC =
                     test.linkedTask,
                     test.priority,
                     test.status,
-                    test.assignedTo,
-                    test.project,
-                    test.createdAt,
+                    test.project ||
+                      "Unassigned",
+                    test.createdAt
+                      ? new Date(
+                          test.createdAt
+                        ).toLocaleString()
+                      : "-",
                   ]
-                )
-              )
-            );
+                ),
+              ],
+            });
           }
 
           /* =================================================
              QUALITY SCORECARD
           ================================================= */
 
-          if (
-            title ===
+          else if (
+            reportTitle ===
             "Quality Scorecard"
           ) {
 
-            const total =
-              tests.length;
-
-            const executed =
-              tests.filter(
-                (test) =>
-                  [
-                    "passed",
-                    "failed",
-                    "blocked",
-                    "in testing",
-                  ].includes(
-                    normalize(
-                      test.status
-                    )
-                  )
-              ).length;
-
-            const passed =
-              tests.filter(
-                (test) =>
-                  normalize(
-                    test.status
-                  ) ===
-                  "passed"
-              ).length;
-
-            const failed =
-              tests.filter(
-                (test) =>
-                  normalize(
-                    test.status
-                  ) ===
-                  "failed"
-              ).length;
-
-            const blocked =
-              tests.filter(
-                (test) =>
-                  normalize(
-                    test.status
-                  ) ===
-                  "blocked"
-              ).length;
-
             const coverage =
-              total > 0
-                ? (
-                    (executed /
-                      total) *
+              totalTests === 0
+                ? 0
+                : Math.round(
+                    (
+                      executed /
+                      totalTests
+                    ) *
                     100
-                  ).toFixed(2)
-                : "0.00";
+                  );
 
             const passRate =
-              total > 0
-                ? (
-                    (passed /
-                      total) *
+              totalTests === 0
+                ? 0
+                : Math.round(
+                    (
+                      passed /
+                      totalTests
+                    ) *
                     100
-                  ).toFixed(2)
-                : "0.00";
+                  );
 
             const executionRate =
-              total > 0
-                ? (
-                    (executed /
-                      total) *
+              totalTests === 0
+                ? 0
+                : Math.round(
+                    (
+                      executed /
+                      totalTests
+                    ) *
                     100
-                  ).toFixed(2)
-                : "0.00";
+                  );
 
-            downloadCsv(
-              `quality-scorecard-${today}.csv`,
+            const qualityScore =
+              totalTests === 0
+                ? 0
+                : Math.round(
+                    (
+                      (
+                        coverage +
+                        passRate +
+                        executionRate
+                      ) /
+                      3
+                    )
+                  );
 
-              makeCsv(
+            setGeneratedReport({
+              title:
+                reportTitle,
+
+              generatedFor:
+                userName,
+
+              generatedAt,
+
+              summary:
+                "Overall QA score calculated from your current test execution and bug data.",
+
+              metrics: [
+                {
+                  label:
+                    "Quality Score",
+                  value:
+                    `${qualityScore}%`,
+                },
+                {
+                  label:
+                    "Coverage",
+                  value:
+                    `${coverage}%`,
+                },
+                {
+                  label:
+                    "Pass Rate",
+                  value:
+                    `${passRate}%`,
+                },
+                {
+                  label:
+                    "Execution Rate",
+                  value:
+                    `${executionRate}%`,
+                },
+                {
+                  label:
+                    "Tests",
+                  value:
+                    totalTests,
+                },
+                {
+                  label:
+                    "Bugs Filed",
+                  value:
+                    myBugs.length,
+                },
+              ],
+
+              rows: [
                 [
                   "Metric",
                   "Value",
                 ],
-
                 [
-                  [
-                    "Total Test Cases",
-                    total,
-                  ],
-                  [
-                    "Executed",
-                    executed,
-                  ],
-                  [
-                    "Passed",
-                    passed,
-                  ],
-                  [
-                    "Failed",
-                    failed,
-                  ],
-                  [
-                    "Blocked",
-                    blocked,
-                  ],
-                  [
-                    "Coverage %",
-                    coverage,
-                  ],
-                  [
-                    "Pass Rate %",
-                    passRate,
-                  ],
-                  [
-                    "Execution Rate %",
-                    executionRate,
-                  ],
-                  [
-                    "Assigned Bugs",
-                    bugs.length,
-                  ],
-                ]
-              )
-            );
+                  "Total Tests",
+                  String(
+                    totalTests
+                  ),
+                ],
+                [
+                  "Executed",
+                  String(
+                    executed
+                  ),
+                ],
+                [
+                  "Passed",
+                  String(
+                    passed
+                  ),
+                ],
+                [
+                  "Failed",
+                  String(
+                    failed
+                  ),
+                ],
+                [
+                  "Blocked",
+                  String(
+                    blocked
+                  ),
+                ],
+                [
+                  "Coverage",
+                  `${coverage}%`,
+                ],
+                [
+                  "Pass Rate",
+                  `${passRate}%`,
+                ],
+                [
+                  "Execution Rate",
+                  `${executionRate}%`,
+                ],
+                [
+                  "Bugs Filed",
+                  String(
+                    myBugs.length
+                  ),
+                ],
+              ],
+            });
           }
 
-          setGeneratedReport(
-            title
-          );
-
-          window.setTimeout(
-            () => {
-              setGeneratedReport(
-                null
-              );
-            },
-            1800
-          );
-
-        } catch (error) {
+        } catch (err) {
 
           console.error(
             "Failed to generate QA report:",
-            error
+            err
           );
 
-          window.alert(
-            error instanceof Error
-              ? error.message
+          setError(
+            err instanceof Error
+              ? err.message
               : "Failed to generate report."
           );
 
@@ -1289,6 +1808,14 @@ const QAReports: React.FC =
         }
       };
 
+    /* =====================================================
+       CLOSE REPORT
+    ===================================================== */
+
+    const closeReport = () => {
+      setGeneratedReport(null);
+    };
+
     return (
       <div
         className="w-full"
@@ -1297,6 +1824,28 @@ const QAReports: React.FC =
             "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         }}
       >
+
+        {/* ERROR */}
+
+        {error && (
+          <div
+            className="
+              mb-[14px]
+              rounded-[8px]
+              border
+              border-[#FFD1D1]
+              bg-[#FFF5F5]
+              px-4
+              py-3
+              text-[10px]
+              text-[#E05252]
+            "
+          >
+            {error}
+          </div>
+        )}
+
+        {/* REPORT GRID */}
 
         <div
           className="
@@ -1426,18 +1975,292 @@ const QAReports: React.FC =
                   {generatingReport ===
                   report.title
                     ? "Generating..."
-                    : generatedReport ===
-                      report.title
-                    ? "Generated"
                     : "Generate Report"}
                 </button>
 
               </div>
-
             )
           )}
 
         </div>
+
+        {/* =====================================================
+            GENERATED REPORT MODAL
+        ===================================================== */}
+
+        {generatedReport && (
+          <div
+            className="
+              fixed
+              inset-0
+              z-50
+              flex
+              items-center
+              justify-center
+              bg-slate-900/40
+              p-4
+            "
+            onClick={closeReport}
+          >
+
+            <div
+              className="
+                w-full
+                max-w-4xl
+                max-h-[85vh]
+                overflow-hidden
+                rounded-2xl
+                border
+                border-slate-200
+                bg-white
+                shadow-2xl
+              "
+              onClick={(event) =>
+                event.stopPropagation()
+              }
+            >
+
+              {/* REPORT HEADER */}
+
+              <div
+                className="
+                  flex
+                  items-start
+                  justify-between
+                  border-b
+                  border-slate-200
+                  px-5
+                  py-4
+                "
+              >
+
+                <div>
+
+                  <h2 className="text-base font-bold text-slate-900">
+                    {generatedReport.title}
+                  </h2>
+
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Generated for{" "}
+                    <span className="font-semibold text-slate-600">
+                      {generatedReport.generatedFor}
+                    </span>
+                    {" · "}
+                    {generatedReport.generatedAt}
+                  </p>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    closeReport
+                  }
+                  className="
+                    flex
+                    h-8
+                    w-8
+                    items-center
+                    justify-center
+                    rounded-lg
+                    text-slate-400
+                    hover:bg-slate-100
+                    hover:text-slate-700
+                  "
+                >
+                  <X
+                    size={17}
+                  />
+                </button>
+
+              </div>
+
+              {/* REPORT BODY */}
+
+              <div
+                className="
+                  max-h-[calc(85vh-76px)]
+                  overflow-y-auto
+                  p-5
+                "
+              >
+
+                {/* SUMMARY */}
+
+                <div
+                  className="
+                    mb-5
+                    rounded-xl
+                    border
+                    border-slate-200
+                    bg-slate-50
+                    p-4
+                  "
+                >
+
+                  <p className="text-[11px] leading-5 text-slate-600">
+                    {generatedReport.summary}
+                  </p>
+
+                </div>
+
+                {/* METRICS */}
+
+                <div
+                  className="
+                    mb-5
+                    grid
+                    grid-cols-2
+                    gap-3
+                    md:grid-cols-3
+                    xl:grid-cols-6
+                  "
+                >
+
+                  {generatedReport.metrics.map(
+                    (
+                      metric
+                    ) => (
+
+                      <div
+                        key={
+                          metric.label
+                        }
+                        className="
+                          rounded-xl
+                          border
+                          border-slate-200
+                          bg-white
+                          p-3
+                        "
+                      >
+
+                        <p className="text-[9px] uppercase tracking-[0.06em] text-slate-400">
+                          {
+                            metric.label
+                          }
+                        </p>
+
+                        <p className="mt-1 text-lg font-bold text-slate-900">
+                          {
+                            metric.value
+                          }
+                        </p>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+                {/* DETAIL TABLE */}
+
+                {generatedReport.rows.length >
+                  0 && (
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+
+                    <table className="w-full min-w-[650px] border-collapse">
+
+                      <tbody>
+
+                        {generatedReport.rows.map(
+                          (
+                            row,
+                            rowIndex
+                          ) => (
+
+                            <tr
+                              key={
+                                rowIndex
+                              }
+                              className={
+                                rowIndex ===
+                                0
+                                  ? "bg-slate-50"
+                                  : "bg-white"
+                              }
+                            >
+
+                              {row.map(
+                                (
+                                  cell,
+                                  cellIndex
+                                ) => (
+
+                                  <td
+                                    key={
+                                      cellIndex
+                                    }
+                                    className={`
+                                      border-b
+                                      border-slate-100
+                                      px-3
+                                      py-2.5
+                                      text-left
+                                      text-[10px]
+                                      ${
+                                        rowIndex ===
+                                        0
+                                          ? "font-semibold text-slate-600"
+                                          : "text-slate-700"
+                                      }
+                                    `}
+                                  >
+                                    {
+                                      cell
+                                    }
+                                  </td>
+
+                                )
+                              )}
+
+                            </tr>
+
+                          )
+                        )}
+
+                      </tbody>
+
+                    </table>
+
+                  </div>
+
+                )}
+
+                {/* NO DATA */}
+
+                {generatedReport.metrics.every(
+                  (metric) =>
+                    Number(
+                      metric.value
+                    ) === 0
+                ) && (
+                  <div
+                    className="
+                      mt-4
+                      rounded-xl
+                      border
+                      border-amber-200
+                      bg-amber-50
+                      px-4
+                      py-3
+                      text-[10px]
+                      text-amber-700
+                    "
+                  >
+                    There is currently no data for this
+                    report for the logged-in QA user.
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+
+          </div>
+        )}
 
       </div>
     );

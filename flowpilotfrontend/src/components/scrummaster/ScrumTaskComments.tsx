@@ -240,6 +240,7 @@ export const ScrumTaskComments: React.FC<Props> = ({ taskId, taskKey, members, a
           {members.map((member) => (
             <option key={member.id} value={member.id}>
               {member.name ?? member.email}
+              {member.department ? ` (${member.department})` : ''}
             </option>
           ))}
         </select>

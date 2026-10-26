@@ -1,25 +1,13 @@
 package com.flowpilot.flowpilot.superadmin.controller;
 
-import com.flowpilot.flowpilot.superadmin.service.EmailService;
-import com.flowpilot.flowpilot.superadmin.service.FailedLoginAttemptService;
-
 import jakarta.servlet.http.HttpServletRequest;
-
-import lombok.RequiredArgsConstructor;
 
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-
 @RestControllerAdvice
-@RequiredArgsConstructor
 public class LoginSecurityExceptionHandler {
-
-    private final FailedLoginAttemptService failedLoginAttemptService;
-    private final EmailService emailService;
 
 
     @ExceptionHandler(BadCredentialsException.class)

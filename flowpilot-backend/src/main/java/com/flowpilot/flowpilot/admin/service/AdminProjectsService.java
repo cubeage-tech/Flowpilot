@@ -39,6 +39,7 @@ public class AdminProjectsService {
     }
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public PMProjectDto getProject(Long id) {
 
         PMProject project =

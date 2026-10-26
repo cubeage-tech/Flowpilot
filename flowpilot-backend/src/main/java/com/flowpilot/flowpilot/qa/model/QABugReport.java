@@ -18,11 +18,6 @@ public class QABugReport {
     @Column(nullable = false)
     private String title;
 
-    /* =========================================================
-       PROJECT
-       Stores the ID of the PM project selected in QA.
-    ========================================================= */
-
     @Column(name = "project_id")
     private Long projectId;
 
@@ -37,8 +32,37 @@ public class QABugReport {
     @Column(name = "assigned_to")
     private String assignedTo;
 
-    @Column(name = "steps_to_reproduce", columnDefinition = "TEXT")
+    /*
+     * =========================================================
+     * CREATED BY
+     *
+     * This is the QA user who FILED the bug.
+     *
+     * It is different from assignedTo.
+     *
+     * Example:
+     *
+     * createdBy = Nishad Fulzele
+     * assignedTo = Om Marathe
+     *
+     * The bug must appear in Nishad's Bug Reports because
+     * Nishad created/filed it.
+     * =========================================================
+     */
+    @Column(name = "created_by")
+    private String createdBy;
+
+    @Column(
+            name = "steps_to_reproduce",
+            columnDefinition = "TEXT"
+    )
     private String stepsToReproduce;
+
+    @Column(
+            name = "screenshot",
+            columnDefinition = "TEXT"
+    )
+    private String screenshot;
 
     private String status;
 
@@ -48,9 +72,11 @@ public class QABugReport {
     public QABugReport() {
     }
 
-    /* =========================================================
-       CREATE DATE + DEFAULT STATUS
-    ========================================================= */
+    /*
+     * =========================================================
+     * CREATE DEFAULT VALUES
+     * =========================================================
+     */
 
     @PrePersist
     public void onCreate() {
@@ -59,18 +85,32 @@ public class QABugReport {
             createdAt = LocalDateTime.now();
         }
 
-        if (status == null || status.isBlank()) {
+        if (status == null ||
+                status.isBlank()) {
+
             status = "Open";
         }
     }
 
-    /* =========================================================
-       GETTERS / SETTERS
-    ========================================================= */
+    /*
+     * =========================================================
+     * ID
+     * =========================================================
+     */
 
     public Long getId() {
         return id;
     }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    /*
+     * =========================================================
+     * BUG ID
+     * =========================================================
+     */
 
     public String getBugId() {
         return bugId;
@@ -80,6 +120,12 @@ public class QABugReport {
         this.bugId = bugId;
     }
 
+    /*
+     * =========================================================
+     * TITLE
+     * =========================================================
+     */
+
     public String getTitle() {
         return title;
     }
@@ -88,9 +134,11 @@ public class QABugReport {
         this.title = title;
     }
 
-    /* =========================================================
-       PROJECT ID
-    ========================================================= */
+    /*
+     * =========================================================
+     * PROJECT
+     * =========================================================
+     */
 
     public Long getProjectId() {
         return projectId;
@@ -100,6 +148,12 @@ public class QABugReport {
         this.projectId = projectId;
     }
 
+    /*
+     * =========================================================
+     * LINKED TASK
+     * =========================================================
+     */
+
     public String getLinkedTaskId() {
         return linkedTaskId;
     }
@@ -107,6 +161,12 @@ public class QABugReport {
     public void setLinkedTaskId(String linkedTaskId) {
         this.linkedTaskId = linkedTaskId;
     }
+
+    /*
+     * =========================================================
+     * ENVIRONMENT
+     * =========================================================
+     */
 
     public String getEnvironment() {
         return environment;
@@ -116,6 +176,12 @@ public class QABugReport {
         this.environment = environment;
     }
 
+    /*
+     * =========================================================
+     * SEVERITY
+     * =========================================================
+     */
+
     public String getSeverity() {
         return severity;
     }
@@ -123,6 +189,12 @@ public class QABugReport {
     public void setSeverity(String severity) {
         this.severity = severity;
     }
+
+    /*
+     * =========================================================
+     * ASSIGNED TO
+     * =========================================================
+     */
 
     public String getAssignedTo() {
         return assignedTo;
@@ -132,13 +204,42 @@ public class QABugReport {
         this.assignedTo = assignedTo;
     }
 
+    /*
+     * =========================================================
+     * CREATED BY
+     * =========================================================
+     */
+
+    public String getCreatedBy() {
+        return createdBy;
+    }
+
+    public void setCreatedBy(String createdBy) {
+        this.createdBy = createdBy;
+    }
+
+    /*
+     * =========================================================
+     * STEPS TO REPRODUCE
+     * =========================================================
+     */
+
     public String getStepsToReproduce() {
         return stepsToReproduce;
     }
 
-    public void setStepsToReproduce(String stepsToReproduce) {
-        this.stepsToReproduce = stepsToReproduce;
+    public void setStepsToReproduce(
+            String stepsToReproduce) {
+
+        this.stepsToReproduce =
+                stepsToReproduce;
     }
+
+    /*
+     * =========================================================
+     * STATUS
+     * =========================================================
+     */
 
     public String getStatus() {
         return status;
@@ -148,11 +249,28 @@ public class QABugReport {
         this.status = status;
     }
 
+    /*
+     * =========================================================
+     * CREATED AT
+     * =========================================================
+     */
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
 
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
+    public void setCreatedAt(
+            LocalDateTime createdAt) {
+
+        this.createdAt =
+                createdAt;
+    }
+
+    public String getScreenshot() {
+        return screenshot;
+    }
+
+    public void setScreenshot(String screenshot) {
+        this.screenshot = screenshot;
     }
 }

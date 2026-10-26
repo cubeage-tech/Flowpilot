@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { LayoutGrid, CheckSquare, Layers, Clock, Bell } from 'lucide-react';
+import { LayoutGrid, Layers, Clock, Bell, MessageSquare, RotateCcw } from 'lucide-react';
 import { DashboardLayout } from '../common/DashboardLayout';
 import { DeveloperDashboardView } from './DeveloperDashboardView';
-import { DeveloperTasks } from './DeveloperTasks';
 import { DeveloperSprintBoard } from './DeveloperSprintBoard';
 import { DeveloperTimeLog } from './DeveloperTimeLog';
 import { DeveloperMentions } from './DeveloperMentions';
-                                                                                                          
+import { ScrumStandups } from '../scrummaster/ScrumStandups';
+import { ScrumRetrospective } from '../scrummaster/ScrumRetrospective';
+
 const roleConfig = {
   label: 'SENIOR FRONTEND DEVELOPER',
   color: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-400',
@@ -15,19 +16,21 @@ const roleConfig = {
   avatar: 'SR',
   avatarBg: 'bg-teal-500',
 };
-                                                                                        
+
 const navItems = [
   { name: 'My Dashboard', icon: <LayoutGrid size={18} /> },
-  { name: 'My Tasks', icon: <CheckSquare size={18} /> },
   { name: 'Sprint Board', icon: <Layers size={18} /> },
+  { name: 'Daily Standup', icon: <MessageSquare size={18} /> },
+  { name: 'Retrospective', icon: <RotateCcw size={18} /> },
   { name: 'Time Log', icon: <Clock size={18} /> },
   { name: 'Mentions', icon: <Bell size={18} /> },
 ];
-                          
+
 const pageTitles: Record<string, string> = {
   'My Dashboard': 'My Dashboard',
-  'My Tasks': 'My Tasks',
   'Sprint Board': 'Sprint Board',
+  'Daily Standup': 'Daily Standup',
+  'Retrospective': 'Sprint Retrospective',
   'Time Log': 'Time Log',
   'Mentions': 'Mentions',
 };
@@ -65,12 +68,13 @@ export const DeveloperLayout: React.FC<Props> = ({ onLogout }) => {
       profileConfig={profileConfig}
     >
       {activeTab === 'My Dashboard' && <DeveloperDashboardView />}
-      {activeTab === 'My Tasks' && <DeveloperTasks />}
       {activeTab === 'Sprint Board' && <DeveloperSprintBoard />}
+      {activeTab === 'Daily Standup' && <ScrumStandups readOnly={true} />}
+      {activeTab === 'Retrospective' && <ScrumRetrospective readOnly={true} />}
       {activeTab === 'Time Log' && <DeveloperTimeLog />}
       {activeTab === 'Mentions' && <DeveloperMentions />}
     </DashboardLayout>
   );
 };
-                               
+
 export default DeveloperLayout;

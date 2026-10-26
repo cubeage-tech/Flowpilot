@@ -245,8 +245,11 @@ public class ScrumExceptionHandler {
         log.error("Unhandled exception in Scrum Master endpoint {} {}",
                 request.getMethod(), request.getRequestURI(), ex);
 
-        return respond(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Something went wrong while handling this request. The error has been logged.");
+        String msg = (ex.getMessage() != null && !ex.getMessage().isBlank())
+                ? ex.getMessage()
+                : "Something went wrong while handling this request. The error has been logged.";
+
+        return respond(HttpStatus.INTERNAL_SERVER_ERROR, msg);
     }
 
 
@@ -254,6 +257,7 @@ public class ScrumExceptionHandler {
     // Helpers
     // ============================================
 
+    @SuppressWarnings("null")
     private static ResponseEntity<Map<String, Object>> respond(
             HttpStatus status, String message) {
 

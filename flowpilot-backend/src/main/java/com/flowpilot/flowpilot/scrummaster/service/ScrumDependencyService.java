@@ -197,6 +197,7 @@ public class ScrumDependencyService {
      * so no task has to be named.
      */
     @Transactional
+    @SuppressWarnings("null")
     public void unlink(Long linkId) {
 
         dependencyRepository.delete(requireLink(linkId));
@@ -270,6 +271,7 @@ public class ScrumDependencyService {
 
 
     /** Every task referred to by either side of the given edges, by id. */
+    @SuppressWarnings("null")
     private Map<Long, ScrumTask> referencedTasks(
             List<ScrumTaskDependency> waitingOn, List<ScrumTaskDependency> waitedOnBy) {
 
@@ -293,6 +295,7 @@ public class ScrumDependencyService {
 
 
     /** Oldest link first, so the chips do not reshuffle between reads. */
+    @SuppressWarnings("null")
     private List<ScrumTaskDependency> sorted(List<ScrumTaskDependency> edges) {
 
         List<ScrumTaskDependency> copy = new ArrayList<>(edges);
@@ -332,6 +335,7 @@ public class ScrumDependencyService {
         }
     }
 
+    @SuppressWarnings("null")
     private ScrumTask requireTask(Long taskId) {
 
         return taskRepository
@@ -339,6 +343,7 @@ public class ScrumDependencyService {
                 .orElseThrow(() -> new ScrumNotFoundException("Task not found: " + taskId));
     }
 
+    @SuppressWarnings("null")
     private ScrumTaskDependency requireLink(Long linkId) {
 
         return dependencyRepository

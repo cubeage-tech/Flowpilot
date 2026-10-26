@@ -170,6 +170,7 @@ public class ScrumAttachmentService {
      * more; call it from the task delete path.
      */
     @Transactional
+    @SuppressWarnings("null")
     public void deleteForTask(Long taskId) {
 
         List<ScrumAttachment> attachments =
@@ -232,6 +233,7 @@ public class ScrumAttachmentService {
     }
 
 
+    @SuppressWarnings("null")
     private void requireTask(Long taskId) {
 
         if (!taskRepository.existsById(taskId)) {
@@ -239,6 +241,7 @@ public class ScrumAttachmentService {
         }
     }
 
+    @SuppressWarnings("null")
     private ScrumAttachment requireAttachment(Long attachmentId) {
 
         return attachmentRepository
@@ -247,6 +250,7 @@ public class ScrumAttachmentService {
                         "Attachment not found: " + attachmentId));
     }
 
+    @SuppressWarnings("null")
     private User requireUser(Long userId) {
 
         return userRepository

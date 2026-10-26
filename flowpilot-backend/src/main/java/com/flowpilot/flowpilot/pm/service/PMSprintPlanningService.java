@@ -54,6 +54,7 @@ public class PMSprintPlanningService {
      */
 
     @Transactional(readOnly = true)
+    @SuppressWarnings("null")
     public PMSprintDto getSprint(Long id) {
 
         PMSprint sprint =

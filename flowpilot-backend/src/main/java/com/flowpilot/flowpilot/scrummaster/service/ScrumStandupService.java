@@ -68,7 +68,25 @@ public class ScrumStandupService {
     @Transactional(readOnly = true)
     public ScrumStandupDto.Response getStandup(Long sprintId, LocalDate date) {
 
-        ScrumSprint sprint = resolveSprint(sprintId);
+        ScrumSprint sprint;
+        try {
+            sprint = resolveSprint(sprintId);
+        } catch (ScrumNotFoundException e) {
+            if (sprintId == null) {
+                LocalDate standupDate = date == null ? ScrumWorkingDays.today() : date;
+                return new ScrumStandupDto.Response(
+                        null,
+                        "No Sprint",
+                        standupDate,
+                        0,
+                        0,
+                        List.of(),
+                        taskService.listMembers(),
+                        List.of()
+                );
+            }
+            throw e;
+        }
 
         // "Today" has to be the sprint's today, not the JVM host's: on a
         // server in another zone the morning standup opens on a date the sprint
@@ -118,8 +136,9 @@ public class ScrumStandupService {
      * Upserts one member's entry for one day. People correct what they said
      * minutes after saying it, so a second save replaces the first rather than
      * colliding with the entity's sprint + member + date unique constraint.
-     */
+    */
     @Transactional
+    @SuppressWarnings("null")
     public SaveResult saveStandup(
             Long sprintId,
             ScrumStandupDto.SaveRequest request
@@ -164,9 +183,11 @@ public class ScrumStandupService {
                         sprint.getId(), member.getId(), standupDate)
                 .orElse(null);
 
-        boolean created = standup == null;
+        boolean created;
 
-        if (created) {
+        if (standup == null) {
+
+            created = true;
 
             standup = new ScrumStandup();
 
@@ -175,6 +196,7 @@ public class ScrumStandupService {
             standup.setStandupDate(standupDate);
 
         } else {
+            created = false;
             // Stamped in the module's zone too, so an edit's timestamp cannot
             // date from a different day than the entry it belongs to
             standup.setUpdatedAt(LocalDateTime.now(ScrumWorkingDays.ZONE));
@@ -199,6 +221,7 @@ public class ScrumStandupService {
 
     /** Removes one entry and hands back what was removed. */
     @Transactional
+    @SuppressWarnings("null")
     public ScrumStandupDto.Entry deleteStandup(Long standupId) {
 
         if (standupId == null) {
@@ -251,9 +274,9 @@ public class ScrumStandupService {
                             "Sprint " + sprintId + " was not found."));
         }
 
-        return sprintRepository.findFirstByStatus(ScrumSprint.Status.ACTIVE)
+        return sprintRepository.findCurrentOrLatest()
                 .orElseThrow(() -> new ScrumNotFoundException(
-                        "No active sprint. Create one and start it."));
+                        "No sprints yet. Create one on the Sprints screen."));
     }
 
 

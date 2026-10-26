@@ -3,11 +3,9 @@ package com.flowpilot.flowpilot.scrummaster.repository;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import com.flowpilot.flowpilot.scrummaster.model.ScrumTaskDependency;
 
-@Repository
 public interface ScrumTaskDependencyRepository
         extends JpaRepository<ScrumTaskDependency, Long> {
 

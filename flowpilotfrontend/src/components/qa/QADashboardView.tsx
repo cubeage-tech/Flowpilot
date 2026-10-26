@@ -260,37 +260,61 @@ const getAxiosConfig = () => {
    USER MATCH
 ========================================================= */
 
-const belongsToUser = (
-  assignedTo: unknown,
+const belongsToCurrentUser = (
+  item: {
+    assignedTo?: unknown;
+    assignedUserId?: unknown;
+    assignedToId?: unknown;
+    assignedToEmail?: unknown;
+    createdBy?: unknown;
+  },
   user: StoredUser | null
 ): boolean => {
-  if (!user || assignedTo == null) {
-    return false;
+  if (!user) return false;
+
+  const currentUserId = user.id ?? user.userId ?? user.employeeId;
+  const currentUserEmail = user.email ? normalize(user.email) : "";
+  const currentUserName = user.name || user.fullName || user.username || "";
+
+  const targetUserId = item.assignedUserId ?? item.assignedToId;
+  const targetEmail = item.assignedToEmail ? normalize(item.assignedToEmail) : "";
+
+  // 1. By ID match
+  if (
+    targetUserId !== undefined &&
+    targetUserId !== null &&
+    String(targetUserId).trim() !== "" &&
+    currentUserId !== undefined &&
+    currentUserId !== null &&
+    String(currentUserId).trim() !== ""
+  ) {
+    if (String(targetUserId).trim() === String(currentUserId).trim()) {
+      return true;
+    }
   }
 
-  const assigned =
-    normalize(assignedTo);
+  // 2. By Email match
+  if (targetEmail && currentUserEmail && targetEmail === currentUserEmail) {
+    return true;
+  }
 
-  const values = [
-    user.id,
-    user.userId,
-    user.employeeId,
-    user.name,
-    user.fullName,
-    user.username,
-    user.email,
-  ]
-    .filter(
-      (value) =>
-        value !== undefined &&
-        value !== null &&
-        String(value).trim() !== ""
-    )
-    .map(normalize);
+  // 3. If assignedTo or createdBy is an email address
+  if (item.assignedTo && String(item.assignedTo).includes("@") && currentUserEmail) {
+    if (normalize(item.assignedTo) === currentUserEmail) return true;
+  }
+  if (item.createdBy && String(item.createdBy).includes("@") && currentUserEmail) {
+    if (normalize(item.createdBy) === currentUserEmail) return true;
+  }
 
-  return values.includes(
-    assigned
-  );
+  // 4. By Name match
+  if (item.assignedTo && currentUserName) {
+    if (normalize(item.assignedTo) === normalize(currentUserName)) return true;
+  }
+  if (item.createdBy && currentUserName) {
+    if (normalize(item.createdBy) === normalize(currentUserName)) return true;
+  }
+
+  return false;
 };
 
 /* =========================================================
@@ -329,7 +353,7 @@ const QADashboardView = () => {
         setCurrentUser(user);
 
         /*
-         * GET TEST CASES
+         * GET TEST CASES & BUGS
          *
          * QATestCaseService automatically synchronizes
          * Scrum Master tasks before returning the records.
@@ -370,16 +394,19 @@ const QADashboardView = () => {
             : [];
 
         /*
-         * ONLY CURRENT USER'S TESTS
+         * CURRENT USER'S TESTS (Fallback to all active tests if none assigned specifically yet)
          */
         const myTests =
           allTests.filter(
             (test) =>
-              belongsToUser(
-                test.assignedTo,
+              belongsToCurrentUser(
+                test,
                 user
               )
           );
+
+        const effectiveTests =
+          myTests.length > 0 ? myTests : allTests;
 
         /* =================================================
            BUG DATA
@@ -398,23 +425,30 @@ const QADashboardView = () => {
             : [];
 
         /*
-         * ONLY CURRENT USER'S OPEN BUGS
+         * CURRENT USER'S OPEN BUGS (Filed by QA or assigned to user, fallback to all open bugs)
          */
-        const myOpenBugs =
+        const userBugs =
           allBugs.filter(
             (bug) =>
-              belongsToUser(
-                bug.assignedTo,
+              belongsToCurrentUser(
+                bug,
                 user
-              ) &&
-              normalize(
-                bug.status ||
-                "Open"
-              ) === "open"
+              )
+          );
+
+        const effectiveBugs =
+          userBugs.length > 0 ? userBugs : allBugs;
+
+        const myOpenBugs =
+          effectiveBugs.filter(
+            (bug) => {
+              const status = normalize(bug.status || "open");
+              return status === "open" || status === "in progress" || status === "reopened";
+            }
           ).length;
 
         setTestTasks(
-          myTests
+          effectiveTests
         );
 
         setOpenBugs(
@@ -461,14 +495,22 @@ const QADashboardView = () => {
      COUNTS
   ========================================================= */
 
+  // Active testing tasks: Tasks in testing, in progress, or pending execution
   const testsInProgress =
     testTasks.filter(
-      (task) =>
-        normalize(
-          task.status
-        ) === "in testing"
+      (task) => {
+        const s = normalize(task.status);
+        return (
+          s === "in testing" ||
+          s === "testing" ||
+          s === "in progress" ||
+          s === "pending" ||
+          s === ""
+        );
+      }
     ).length;
 
+  // Completed tests that passed
   const testsPassed =
     testTasks.filter(
       (task) =>
@@ -480,6 +522,7 @@ const QADashboardView = () => {
   const totalTests =
     testTasks.length;
 
+  // Real Pass Rate: percentage of passed tests out of total tests
   const passRate =
     totalTests > 0
       ? Math.round(
@@ -715,15 +758,14 @@ const QADashboardView = () => {
                           shrink-0
                           rounded-full
                           ${
-                            normalize(
-                              task.status
-                            ) === "passed"
+                            normalize(task.status) === "passed"
                               ? "bg-[#20c978]"
-                              : normalize(
-                                  task.status
-                                ) ===
-                                "in testing"
+                              : normalize(task.status) === "in testing" || normalize(task.status) === "in progress"
                               ? "bg-[#f5a000]"
+                              : normalize(task.status) === "pending"
+                              ? "bg-[#3b82f6]"
+                              : normalize(task.status) === "failed" || normalize(task.status) === "blocked"
+                              ? "bg-[#ff3b3b]"
                               : "bg-[#9aa8bb]"
                           }
                         `}
@@ -767,15 +809,14 @@ const QADashboardView = () => {
                         text-[9px]
                         font-medium
                         ${
-                          normalize(
-                            task.status
-                          ) === "passed"
+                          normalize(task.status) === "passed"
                             ? "bg-[#eafaf2] text-[#25c979]"
-                            : normalize(
-                                task.status
-                              ) ===
-                              "in testing"
+                            : normalize(task.status) === "in testing" || normalize(task.status) === "in progress"
                             ? "bg-[#fff6e7] text-[#e99a00]"
+                            : normalize(task.status) === "pending"
+                            ? "bg-[#eff6ff] text-[#2563eb]"
+                            : normalize(task.status) === "failed" || normalize(task.status) === "blocked"
+                            ? "bg-[#fff0f0] text-[#ff3b3b]"
                             : "bg-[#f4f6f8] text-[#9aa8bb]"
                         }
                       `}
@@ -914,11 +955,35 @@ const QADashboardView = () => {
                     <div className="rounded-[8px] bg-[#f8fafc] p-3">
 
                       <p className="text-[9px] text-[#8d98a8]">
+                        In Progress
+                      </p>
+
+                      <p className="mt-1 text-[18px] font-semibold text-[#f59e0b]">
+                        {testsInProgress}
+                      </p>
+
+                    </div>
+
+                    <div className="rounded-[8px] bg-[#f8fafc] p-3">
+
+                      <p className="text-[9px] text-[#8d98a8]">
                         Passed
                       </p>
 
                       <p className="mt-1 text-[18px] font-semibold text-[#20c978]">
                         {testsPassed}
+                      </p>
+
+                    </div>
+
+                    <div className="rounded-[8px] bg-[#f8fafc] p-3">
+
+                      <p className="text-[9px] text-[#8d98a8]">
+                        Pass Rate
+                      </p>
+
+                      <p className="mt-1 text-[18px] font-semibold text-[#10b981]">
+                        {passRate}%
                       </p>
 
                     </div>

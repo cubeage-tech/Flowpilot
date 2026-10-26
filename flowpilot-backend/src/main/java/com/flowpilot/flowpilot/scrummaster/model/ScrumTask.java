@@ -15,6 +15,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -28,7 +29,13 @@ import jakarta.persistence.Table;
  * `completedAt` is the only way to compute average completion time.
  */
 @Entity
-@Table(name = "scrum_tasks")
+@Table(name = "scrum_tasks", indexes = {
+    @Index(name = "idx_scrum_task_sprint_id", columnList = "sprint_id"),
+    @Index(name = "idx_scrum_task_status", columnList = "status"),
+    @Index(name = "idx_scrum_task_key", columnList = "task_key"),
+    @Index(name = "idx_scrum_task_project_id", columnList = "project_id"),
+    @Index(name = "idx_scrum_task_assignee_id", columnList = "assignee_id")
+})
 public class ScrumTask {
 
     /**
@@ -110,6 +117,17 @@ public class ScrumTask {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sprint_id")
     private ScrumSprint sprint;
+
+    @Column(name = "project_id")
+    private Long projectId;
+
+    public Long getProjectId() {
+        return projectId;
+    }
+
+    public void setProjectId(Long projectId) {
+        this.projectId = projectId;
+    }
 
     @Column(name = "entered_status_at", nullable = false)
     private LocalDateTime enteredStatusAt;

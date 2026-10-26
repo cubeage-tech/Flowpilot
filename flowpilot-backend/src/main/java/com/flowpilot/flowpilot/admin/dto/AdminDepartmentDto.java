@@ -1,44 +1,19 @@
 package com.flowpilot.flowpilot.admin.dto;
 
-public class AdminDepartmentDto {
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class AdminDepartmentDto {
     private String name;
     private String head;
     private Integer members;
     private Integer progress;
-
-    public AdminDepartmentDto() {
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getHead() {
-        return head;
-    }
-
-    public void setHead(String head) {
-        this.head = head;
-    }
-
-    public Integer getMembers() {
-        return members;
-    }
-
-    public void setMembers(Integer members) {
-        this.members = members;
-    }
-
-    public Integer getProgress() {
-        return progress;
-    }
-
-    public void setProgress(Integer progress) {
-        this.progress = progress;
-    }
 }

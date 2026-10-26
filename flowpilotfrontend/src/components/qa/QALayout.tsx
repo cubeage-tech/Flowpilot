@@ -8,6 +8,8 @@ import {
   Bell,
   LogOut,
   Search,
+  MessageSquare,
+  RotateCcw,
 } from "lucide-react";
 
 import QADashboardView from "./QADashboardView";
@@ -15,6 +17,8 @@ import QATestCases from "./QATestCases";
 import QABugReports from "./QABugReports";
 import QATestCoverage from "./QATestCoverage";
 import QAReports from "./QAReports";
+import { ScrumStandups } from "../scrummaster/ScrumStandups";
+import { ScrumRetrospective } from "../scrummaster/ScrumRetrospective";
 
 interface QALayoutProps {
   onLogout?: () => void;
@@ -214,6 +218,14 @@ const QALayout = ({ onLogout }: QALayoutProps) => {
       icon: <CheckSquare size={18} />,
     },
     {
+      name: "Daily Standup",
+      icon: <MessageSquare size={18} />,
+    },
+    {
+      name: "Retrospective",
+      icon: <RotateCcw size={18} />,
+    },
+    {
       name: "Bug Reports",
       icon: <AlertTriangle size={18} />,
     },
@@ -231,6 +243,12 @@ const QALayout = ({ onLogout }: QALayoutProps) => {
     switch (activeTab) {
       case "My Test Tasks":
         return "My Test Tasks";
+
+      case "Daily Standup":
+        return "Daily Standup";
+
+      case "Retrospective":
+        return "Sprint Retrospective";
 
       case "Bug Reports":
         return "Bug Reports";
@@ -264,6 +282,12 @@ const QALayout = ({ onLogout }: QALayoutProps) => {
 
       case "My Test Tasks":
         return <QATestCases />;
+
+      case "Daily Standup":
+        return <ScrumStandups readOnly={true} />;
+
+      case "Retrospective":
+        return <ScrumRetrospective readOnly={true} />;
 
       case "Bug Reports":
         return <QABugReports />;

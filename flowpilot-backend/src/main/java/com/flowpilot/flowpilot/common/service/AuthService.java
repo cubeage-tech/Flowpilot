@@ -43,12 +43,11 @@ public class AuthService {
          * Verify that the role selected during login
          * matches the role assigned to the user.
          */
-        if (request.getRole() == null ||
-                user.getRole() == null ||
-                !request.getRole().trim().equalsIgnoreCase(
-                        user.getRole().trim()
-                )) {
+        String reqRole = normalizeRole(request.getRole());
+        String userRole = normalizeRole(user.getRole());
 
+        if (reqRole.isEmpty() || !reqRole.equals(userRole)) {
+                
             throw new BadCredentialsException(
                     "You are not authorized to login with this role"
             );
@@ -83,7 +82,50 @@ public class AuthService {
                 token,
                 request.getRole().trim(),
                 user.getEmail(),
-                user.getName()
+                user.getName(),
+                user.getId()
         );
+    }
+
+    public void changePassword(String email, String currentPassword, String newPassword) {
+        if (email == null || email.isBlank()) {
+            throw new BadCredentialsException("Authentication required to change password.");
+        }
+        if (currentPassword == null || currentPassword.isBlank()) {
+            throw new IllegalArgumentException("Current password is required.");
+        }
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new IllegalArgumentException("New password is required.");
+        }
+        if (newPassword.length() < 6) {
+            throw new IllegalArgumentException("New password must be at least 6 characters.");
+        }
+
+        var user = userRepository.findByEmail(email.trim())
+                .orElseThrow(() -> new BadCredentialsException("User account not found."));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new BadCredentialsException("Current password does not match.");
+        }
+
+        String encoded = passwordEncoder.encode(newPassword);
+        user.setPassword(encoded);
+        userRepository.save(user);
+
+        // Also synchronize in superadmin_users if present
+        superAdminUserRepository.findByEmail(email.trim()).ifPresent(saUser -> {
+            saUser.setPassword(encoded);
+            superAdminUserRepository.save(saUser);
+        });
+    }
+
+    private String normalizeRole(String role) {
+        if (role == null) {
+            return "";
+        }
+        return role.trim()
+                .toUpperCase()
+                .replace(" ", "_")
+                .replace("-", "_");
     }
 }

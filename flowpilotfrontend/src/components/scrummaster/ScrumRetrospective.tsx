@@ -84,7 +84,11 @@ const formatDate = (iso: string | null): string => {
 const dueText = (item: RetroItem): string =>
   [item.dueLabel, formatDate(item.dueDate)].filter(Boolean).join(' · ');
 
-export const ScrumRetrospective: React.FC = () => {
+interface ScrumRetrospectiveProps {
+  readOnly?: boolean;
+}
+
+export const ScrumRetrospective: React.FC<ScrumRetrospectiveProps> = ({ readOnly = false }) => {
   const [data, setData] = useState<Retrospective | null>(null);
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [sprintId, setSprintId] = useState<number | ''>('');
@@ -153,9 +157,9 @@ export const ScrumRetrospective: React.FC = () => {
   };
 
   /** Throws on failure so the form that called it can show the reason in place. */
-  const addItem = async (input: NewItem) => {
+  const addItem = async (input: NewItem, targetSprintId?: number) => {
     setActionError('');
-    await createRetroItem(input);
+    await createRetroItem(input, targetSprintId);
     await load(data?.sprintId);
   };
 
@@ -201,7 +205,7 @@ export const ScrumRetrospective: React.FC = () => {
    * deleting are all keyed by item id and work on a closed sprint as normal.
    * Drop this gate once the client can pass a sprint id on create.
    */
-  const canAdd = activeSprint !== null && activeSprint.id === data.sprintId;
+  const canAdd = !readOnly;
 
   const renderPanel = (panel: Panel) => {
     const items = itemsByKind[panel.kind];
@@ -223,9 +227,9 @@ export const ScrumRetrospective: React.FC = () => {
           )
         }
         busy={busyId === item.id}
-        onToggle={isActions ? toggleItem : null}
-        onSaveText={saveItemText}
-        onDelete={removeItem}
+        onToggle={!readOnly && isActions ? toggleItem : null}
+        onSaveText={!readOnly ? saveItemText : null}
+        onDelete={!readOnly ? removeItem : null}
       />
     ));
 
@@ -252,7 +256,7 @@ export const ScrumRetrospective: React.FC = () => {
               kind={panel.kind}
               placeholder={panel.placeholder}
               members={data.members}
-              onSubmit={addItem}
+              onSubmit={(input) => addItem(input, data.sprintId)}
             />
           </footer>
         )}
@@ -309,7 +313,7 @@ export const ScrumRetrospective: React.FC = () => {
             )}
             {sprints.map((sprint) => (
               <option key={sprint.id} value={sprint.id}>
-                {sprint.name} · {sprint.status.toLowerCase()}
+                {sprint.name}{sprint.status ? ` · ${sprint.status.toLowerCase()}` : ''}
               </option>
             ))}
           </select>
@@ -386,8 +390,8 @@ const RetroRow: React.FC<{
   busy: boolean;
   /** Only actions can be ticked off, so only they get a checkbox. */
   onToggle: ((item: RetroItem, completed: boolean) => void) | null;
-  onSaveText: (item: RetroItem, text: string) => Promise<boolean>;
-  onDelete: (item: RetroItem) => void;
+  onSaveText: ((item: RetroItem, text: string) => Promise<boolean>) | null;
+  onDelete: ((item: RetroItem) => void) | null;
 }> = ({ item, index, tone, bullet, busy, onToggle, onSaveText, onDelete }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.text);
@@ -413,7 +417,7 @@ const RetroRow: React.FC<{
       return;
     }
 
-    if (await onSaveText(item, next)) {
+    if (onSaveText && (await onSaveText(item, next))) {
       setEditing(false);
     }
   };
@@ -526,7 +530,7 @@ const RetroRow: React.FC<{
         )}
       </div>
 
-      {!editing && (
+      {!editing && onDelete && onSaveText && (
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
@@ -668,6 +672,7 @@ const AddForm: React.FC<{
               {members.map((member) => (
                 <option key={member.id} value={member.id}>
                   {member.name ?? member.email}
+                  {member.department ? ` (${member.department})` : ''}
                 </option>
               ))}
             </select>

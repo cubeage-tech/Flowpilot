@@ -193,42 +193,54 @@ const getToken = () => {
   return "";
 };
 
-const belongsToUser = (
-  assignedTo: unknown,
+const belongsToCurrentUser = (
+  item: {
+    assignedTo?: unknown;
+    assignedUserId?: unknown;
+    assignedToId?: unknown;
+    assignedToEmail?: unknown;
+  },
   user: StoredUser | null
-) => {
+): boolean => {
+  if (!user) return false;
 
+  const currentUserId = user.id ?? user.userId ?? user.employeeId;
+  const currentUserEmail = user.email ? normalize(user.email) : "";
+  const currentUserName = user.name || user.fullName || user.username || "";
+
+  const targetUserId = item.assignedUserId ?? item.assignedToId;
+  const targetEmail = item.assignedToEmail ? normalize(item.assignedToEmail) : "";
+
+  // 1. By ID match
   if (
-    !user ||
-    assignedTo === undefined ||
-    assignedTo === null
+    targetUserId !== undefined &&
+    targetUserId !== null &&
+    String(targetUserId).trim() !== "" &&
+    currentUserId !== undefined &&
+    currentUserId !== null &&
+    String(currentUserId).trim() !== ""
   ) {
-    return false;
+    if (String(targetUserId).trim() === String(currentUserId).trim()) {
+      return true;
+    }
   }
 
-  const assigned =
-    normalize(assignedTo);
+  // 2. By Email match
+  if (targetEmail && currentUserEmail && targetEmail === currentUserEmail) {
+    return true;
+  }
 
-  const userValues = [
-    user.id,
-    user.userId,
-    user.employeeId,
-    user.name,
-    user.fullName,
-    user.username,
-    user.email,
-  ]
-    .filter(
-      (value) =>
-        value !== undefined &&
-        value !== null &&
-        String(value).trim() !== ""
-    )
-    .map(normalize);
+  // 3. If assignedTo is email
+  if (item.assignedTo && String(item.assignedTo).includes("@") && currentUserEmail) {
+    if (normalize(item.assignedTo) === currentUserEmail) return true;
+  }
 
-  return userValues.includes(
-    assigned
-  );
+  // 4. By Name match
+  if (item.assignedTo && currentUserName) {
+    if (normalize(item.assignedTo) === normalize(currentUserName)) return true;
+  }
+
+  return false;
 };
 
 const QATestCoverage: React.FC =
@@ -289,18 +301,18 @@ const QATestCoverage: React.FC =
               : [];
 
           /*
-           * ONLY CURRENT USER
+           * CURRENT USER'S TESTS (with fallback to all tests)
            */
           const mine =
             allTests.filter(
               (test) =>
-                belongsToUser(
-                  test.assignedTo,
+                belongsToCurrentUser(
+                  test,
                   user
                 )
             );
 
-          setTestCases(mine);
+          setTestCases(mine.length > 0 ? mine : allTests);
 
         } catch (err: any) {
 
@@ -385,6 +397,12 @@ const QATestCoverage: React.FC =
           )
       ).length;
 
+    // Real Pass Rate: percentage of passed tests
+    const passRate =
+      total > 0
+        ? Math.round((passed / total) * 100)
+        : 0;
+
     /*
      * =======================================================
      * REAL MODULE / PROJECT COVERAGE
@@ -401,6 +419,7 @@ const QATestCoverage: React.FC =
         {
           cases: number;
           executed: number;
+          passed: number;
         }
       >();
 
@@ -417,6 +436,7 @@ const QATestCoverage: React.FC =
           ) || {
             cases: 0,
             executed: 0,
+            passed: 0,
           };
 
         current.cases++;
@@ -434,6 +454,14 @@ const QATestCoverage: React.FC =
           )
         ) {
           current.executed++;
+        }
+
+        if (
+          normalize(
+            test.status
+          ) === "passed"
+        ) {
+          current.passed++;
         }
 
         moduleMap.set(
@@ -458,11 +486,26 @@ const QATestCoverage: React.FC =
                   100
                 );
 
+          const modulePassRate =
+            values.cases === 0
+              ? 0
+              : Math.round(
+                  (values.passed /
+                    values.cases) *
+                  100
+                );
+
           return {
             name,
             cases:
               values.cases,
+            executed:
+              values.executed,
+            passed:
+              values.passed,
             percentage,
+            passRate:
+              modulePassRate,
           };
         }
       );
@@ -538,7 +581,7 @@ const QATestCoverage: React.FC =
               COVERAGE SUMMARY
           ========================================================= */}
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-5">
 
             {/* Total Test Cases */}
 
@@ -548,7 +591,7 @@ const QATestCoverage: React.FC =
                 Total Test Cases
               </div>
 
-              <div className="mt-2 text-2xl sm:text-3xl font-bold text-emerald-500">
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-slate-800">
                 {loading
                   ? "..."
                   : total}
@@ -564,7 +607,7 @@ const QATestCoverage: React.FC =
                 Executed
               </div>
 
-              <div className="mt-2 text-2xl sm:text-3xl font-bold text-green-600">
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-blue-600">
                 {loading
                   ? "..."
                   : executed}
@@ -580,7 +623,7 @@ const QATestCoverage: React.FC =
                 Passed
               </div>
 
-              <div className="mt-2 text-2xl sm:text-3xl font-bold text-green-600">
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-emerald-600">
                 {loading
                   ? "..."
                   : passed}
@@ -596,10 +639,26 @@ const QATestCoverage: React.FC =
                 Failed / Blocked
               </div>
 
-              <div className="mt-2 text-2xl sm:text-3xl font-bold text-red-500">
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-rose-500">
                 {loading
                   ? "..."
                   : failedBlocked}
+              </div>
+
+            </div>
+
+            {/* Pass Rate */}
+
+            <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-sm min-w-0 col-span-2 sm:col-span-1">
+
+              <div className="text-[9px] sm:text-[10px] font-medium tracking-[0.08em] text-slate-400 uppercase">
+                Pass Rate
+              </div>
+
+              <div className="mt-2 text-2xl sm:text-3xl font-bold text-emerald-500">
+                {loading
+                  ? "..."
+                  : `${passRate}%`}
               </div>
 
             </div>
@@ -641,7 +700,7 @@ const QATestCoverage: React.FC =
 
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2.5 shrink-0">
 
                         <span className="text-[9px] sm:text-[10px] text-slate-400">
                           {item.cases}{" "}
@@ -650,12 +709,16 @@ const QATestCoverage: React.FC =
                             : "cases"}
                         </span>
 
+                        <span className="text-[9px] sm:text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-medium">
+                          Pass: {item.passRate}%
+                        </span>
+
                         <span
                           className={`text-[10px] sm:text-[11px] font-semibold ${getTextColor(
                             item.percentage
                           )}`}
                         >
-                          {item.percentage}%
+                          Cov: {item.percentage}%
                         </span>
 
                       </div>

@@ -39,25 +39,57 @@ const initialSettings: NotificationSetting[] = [
   },
 ];
 
+const STORAGE_KEY = 'flowpilot_admin_notification_settings';
+
 export const AdminNotifications: React.FC = () => {
-  const [settings, setSettings] =
-    useState<NotificationSetting[]>(initialSettings);
+  const [settings, setSettings] = useState<NotificationSetting[]>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to parse saved notification settings:', e);
+    }
+    return initialSettings;
+  });
+
+  const [toastMessage, setToastMessage] = useState('');
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 2500);
+  };
 
   const toggleSetting = (id: number) => {
-    setSettings((previous) =>
-      previous.map((setting) =>
+    setSettings((previous) => {
+      const updated = previous.map((setting) =>
         setting.id === id
           ? {
               ...setting,
               enabled: !setting.enabled,
             }
           : setting
-      )
-    );
+      );
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to save notification settings:', e);
+      }
+      return updated;
+    });
+
+    const target = settings.find((s) => s.id === id);
+    if (target) {
+      showToast(`Notification trigger "${target.label}" ${!target.enabled ? 'enabled' : 'disabled'}`);
+    }
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full relative">
+      {toastMessage && (
+        <div className="fixed top-5 right-5 z-[300] bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-extrabold shadow-lg transition-all animate-bounce">
+          {toastMessage}
+        </div>
+      )}
 
       {/* ==================== NOTIFICATION SETTINGS CARD ==================== */}
 

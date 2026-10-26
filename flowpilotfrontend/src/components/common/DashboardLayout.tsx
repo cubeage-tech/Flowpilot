@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { LayoutGrid, Bell, Search, LogOut, User, Settings, HelpCircle, Power, Menu, X } from 'lucide-react';
+import { LayoutGrid, Bell, Search, LogOut, User, Settings, HelpCircle, Power, Menu, X, Key, CheckCircle2, Lock, Mail, Phone, Moon, Sun, Monitor, Send, Check } from 'lucide-react';
 
 export interface NavItem {
   name: string;
@@ -61,8 +61,100 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [notifications, setNotifications] = useState(initialNotifications);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Change Password State
+  const [showChangePassModal, setShowChangePassModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changePassLoading, setChangePassLoading] = useState(false);
+  const [changePassError, setChangePassError] = useState('');
+  const [changePassSuccess, setChangePassSuccess] = useState('');
+
+  // My Profile Modal State
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileName, setProfileName] = useState(() => localStorage.getItem('name') || roleConfig.name);
+  const [profilePhone, setProfilePhone] = useState(() => localStorage.getItem('phone') || '+1 (555) 019-2834');
+  const [profileBio, setProfileBio] = useState(() => localStorage.getItem('bio') || 'Productive team contributor focused on high quality agile deliverables.');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState('');
+
+  // Settings Modal State
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [emailAlerts, setEmailAlerts] = useState(() => localStorage.getItem('pref_email_alerts') !== 'false');
+  const [soundEffects, setSoundEffects] = useState(() => localStorage.getItem('pref_sound') === 'true');
+  const [compactMode, setCompactMode] = useState(() => localStorage.getItem('pref_compact') === 'true');
+  const [themeMode, setThemeMode] = useState(() => localStorage.getItem('pref_theme') || 'system');
+  const [settingsSuccess, setSettingsSuccess] = useState('');
+
+  // Help & Support Modal State
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  const [supportSubject, setSupportSubject] = useState('');
+  const [supportMessage, setSupportMessage] = useState('');
+  const [supportSending, setSupportSending] = useState(false);
+  const [supportSuccess, setSupportSuccess] = useState('');
+
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangePassError('');
+    setChangePassSuccess('');
+
+    if (!currentPassword) {
+      setChangePassError('Please enter your current password.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setChangePassError('New password must be at least 6 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setChangePassError('New password and confirm password do not match.');
+      return;
+    }
+
+    setChangePassLoading(true);
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('jwt') || localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:8080/api/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const responseText = await response.text();
+      let data: any = null;
+      try {
+        data = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        data = null;
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || responseText || 'Failed to change password.');
+      }
+
+      setChangePassSuccess('Password changed successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setShowChangePassModal(false);
+        setChangePassSuccess('');
+      }, 2000);
+    } catch (err: any) {
+      setChangePassError(err.message || 'Failed to change password.');
+    } finally {
+      setChangePassLoading(false);
+    }
+  };
 
   // Get the currently logged-in user's name and email
   const loggedInName = localStorage.getItem('name') || roleConfig.name;
@@ -441,23 +533,66 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                   </div>
 
                   <div className="py-2">
-                    {[
-                      { icon: <User size={15} />, label: 'My Profile' },
-                      { icon: <Settings size={15} />, label: 'Settings' },
-                      { icon: <HelpCircle size={15} />, label: 'Help & Support' },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-                      >
-                        <span className="text-slate-400">
-                          {item.icon}
-                        </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProfile(false);
+                        setShowChangePassModal(true);
+                        setChangePassError('');
+                        setChangePassSuccess('');
+                      }}
+                      className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <span className="text-slate-400">
+                        <Key size={15} />
+                      </span>
+                      Change Password
+                    </button>
 
-                        {item.label}
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProfile(false);
+                        setShowProfileModal(true);
+                        setProfileSuccess('');
+                      }}
+                      className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <span className="text-slate-400">
+                        <User size={15} />
+                      </span>
+                      My Profile
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProfile(false);
+                        setShowSettingsModal(true);
+                        setSettingsSuccess('');
+                      }}
+                      className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <span className="text-slate-400">
+                        <Settings size={15} />
+                      </span>
+                      Settings
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProfile(false);
+                        setShowHelpModal(true);
+                        setSupportSuccess('');
+                      }}
+                      className="w-full flex items-center gap-3 px-5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <span className="text-slate-400">
+                        <HelpCircle size={15} />
+                      </span>
+                      Help & Support
+                    </button>
                   </div>
 
                   <div className="border-t border-slate-100 py-2">
@@ -483,6 +618,528 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         </div>
 
       </main>
+
+      {/* CHANGE PASSWORD MODAL */}
+      {showChangePassModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <Lock size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Change Password
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Update your account login password
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePassModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="mt-4 space-y-3.5">
+              {changePassSuccess && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                  <span>{changePassSuccess}</span>
+                </div>
+              )}
+
+              {changePassError && (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+                  {changePassError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="At least 6 characters"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePassModal(false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={changePassLoading}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  <Lock size={13} />
+                  {changePassLoading ? 'Updating...' : 'Update Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MY PROFILE MODAL */}
+      {showProfileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-10 h-10 rounded-xl ${dynamicRoleConfig.avatarBg} text-white flex items-center justify-center font-extrabold text-sm shadow-md`}>
+                  {dynamicRoleConfig.avatar}
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    My Profile
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    View and update your personal details
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProfileModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setProfileSaving(true);
+                localStorage.setItem('name', profileName);
+                localStorage.setItem('phone', profilePhone);
+                localStorage.setItem('bio', profileBio);
+                setTimeout(() => {
+                  setProfileSaving(false);
+                  setProfileSuccess('Profile details saved successfully!');
+                  setTimeout(() => setProfileSuccess(''), 3000);
+                }, 400);
+              }}
+              className="mt-4 space-y-3.5"
+            >
+              {profileSuccess && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                  <span>{profileSuccess}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Full Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    disabled
+                    value={dynamicProfileConfig.email}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Designation & Role
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={`${dynamicRoleConfig.label} (${dynamicProfileConfig.roleLabel})`}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Department
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={dynamicRoleConfig.dept || 'Engineering'}
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  value={profilePhone}
+                  onChange={(e) => setProfilePhone(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                  Bio / About Me
+                </label>
+                <textarea
+                  rows={2}
+                  value={profileBio}
+                  onChange={(e) => setProfileBio(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 resize-y"
+                />
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowProfileModal(false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  <Check size={14} />
+                  {profileSaving ? 'Saving...' : 'Save Profile'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS MODAL */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
+                  <Settings size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Preferences & Settings
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Configure your workspace preferences and notifications
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {settingsSuccess && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                  <span>{settingsSuccess}</span>
+                </div>
+              )}
+
+              {/* Preferences toggles */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
+                      <Mail size={16} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">Email Notifications</p>
+                      <p className="text-[11px] text-slate-400">Receive alerts when assigned to new tasks or mentions</p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={emailAlerts}
+                    onChange={(e) => {
+                      setEmailAlerts(e.target.checked);
+                      localStorage.setItem('pref_email_alerts', String(e.target.checked));
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-teal-50 text-teal-600">
+                      <Bell size={16} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">Sound Effects</p>
+                      <p className="text-[11px] text-slate-400">Play chime when sprint card moves or task completes</p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={soundEffects}
+                    onChange={(e) => {
+                      setSoundEffects(e.target.checked);
+                      localStorage.setItem('pref_sound', String(e.target.checked));
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+                      <Monitor size={16} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">Compact Table Mode</p>
+                      <p className="text-[11px] text-slate-400">Reduce table row padding for denser data views</p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={compactMode}
+                    onChange={(e) => {
+                      setCompactMode(e.target.checked);
+                      localStorage.setItem('pref_compact', String(e.target.checked));
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* Theme selection */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-2">
+                  Theme Appearance
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'light', label: 'Light', icon: <Sun size={14} /> },
+                    { id: 'dark', label: 'Dark', icon: <Moon size={14} /> },
+                    { id: 'system', label: 'System', icon: <Monitor size={14} /> },
+                  ].map((theme) => (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => {
+                        setThemeMode(theme.id);
+                        localStorage.setItem('pref_theme', theme.id);
+                      }}
+                      className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
+                        themeMode === theme.id
+                          ? 'border-emerald-500 bg-emerald-50/60 text-emerald-700 shadow-xs'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {theme.icon}
+                      {theme.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-2 border-t border-slate-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsModal(false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HELP & SUPPORT MODAL */}
+      {showHelpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                  <HelpCircle size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    Help & Support
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Get assistance, report bugs, or contact our support team
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHelpModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {supportSuccess && (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                  <span>{supportSuccess}</span>
+                </div>
+              )}
+
+              {/* Support Quick Contacts */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-3 rounded-xl border border-slate-100 bg-slate-50 flex items-center gap-2.5">
+                  <Mail size={16} className="text-blue-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Email Helpdesk</p>
+                    <p className="text-xs font-semibold text-slate-700 truncate">support@flowpilot.io</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl border border-slate-100 bg-slate-50 flex items-center gap-2.5">
+                  <Phone size={16} className="text-emerald-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Emergency Support</p>
+                    <p className="text-xs font-semibold text-slate-700 truncate">+1 (800) 234-FLOW</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ticket form */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!supportSubject.trim() || !supportMessage.trim()) return;
+                  setSupportSending(true);
+                  setTimeout(() => {
+                    setSupportSending(false);
+                    setSupportSuccess('Support ticket submitted! Our team will respond shortly.');
+                    setSupportSubject('');
+                    setSupportMessage('');
+                    setTimeout(() => setSupportSuccess(''), 4000);
+                  }, 600);
+                }}
+                className="space-y-3 pt-1 border-t border-slate-100"
+              >
+                <p className="text-xs font-bold text-slate-800">Submit Support Request</p>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Subject
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={supportSubject}
+                    onChange={(e) => setSupportSubject(e.target.value)}
+                    placeholder="e.g. Issue moving card on Scrum board"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+                    Message / Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    required
+                    value={supportMessage}
+                    onChange={(e) => setSupportMessage(e.target.value)}
+                    placeholder="Describe what you are encountering..."
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-y"
+                  />
+                </div>
+
+                <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowHelpModal(false)}
+                    className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={supportSending}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    <Send size={13} />
+                    {supportSending ? 'Submitting...' : 'Send Request'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

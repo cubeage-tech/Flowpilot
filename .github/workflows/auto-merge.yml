@@ -24,10 +24,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Merge dev branch into develop
+      - name: Merge dev branch
         run: |
-          git fetch origin develop
-          git checkout develop
-          git pull origin develop
-          git merge origin/${{ github.ref_name }} --no-edit -X theirs
-          git push origin develop
+          TARGET_BRANCH="develop"
+          
+          # Fetch all branches explicitly
+          git fetch origin "+refs/heads/*:refs/remotes/origin/*"
+
+          # Switch to target branch or create it locally tracking origin
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          
+          # Merge the pushed dev branch into target branch
+          git merge "origin/${{ github.ref_name }}" --no-edit -m "Auto-merge ${{ github.ref_name }} into $TARGET_BRANCH" -X theirs
+          
+          # Push the merged target branch back to origin
+          git push origin "$TARGET_BRANCH"

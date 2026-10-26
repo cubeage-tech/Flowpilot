@@ -1,20 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FiDownload, FiLink2, FiPaperclip, FiPlus, FiTrash2, FiUpload } from 'react-icons/fi';
+import { FiCheckSquare, FiDownload, FiLink2, FiPaperclip, FiPlus, FiTrash2, FiUpload } from 'react-icons/fi';
 import { TYPE, STATUS, FIELD } from './scrumUI';
 import { ScrumTaskComments } from './ScrumTaskComments';
 import {
   addDependency,
   attachmentUrl,
+  createSubtask,
   deleteAttachment,
+  deleteSubtask,
   fetchAttachments,
   fetchDependencies,
+  fetchSubtasks,
   removeDependency,
+  toggleSubtask,
   uploadAttachment,
   STATUS_LABEL,
   type Attachment,
   type Card,
   type Dependencies,
-  type Member
+  type Member,
+  type Subtask
 } from './scrumApi';
 
 /** Bytes as something a person can read: 1.4 MB rather than 1468006. */
@@ -34,11 +39,17 @@ interface Props {
   members: Member[];
   /** Other cards on the board, offered as dependency targets. */
   siblings: Card[];
+  /** Optional callback to notify parent board when subtasks change so card counts refresh */
+  onSubtaskChange?: () => void;
 }
 
-export const ScrumTaskDetail: React.FC<Props> = ({ card, members, siblings }) => {
+export const ScrumTaskDetail: React.FC<Props> = ({ card, members, siblings, onSubtaskChange }) => {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dependencies, setDependencies] = useState<Dependencies | null>(null);
+  const [subtasks, setSubtasks] = useState<Subtask[]>([]);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [newSubtaskAssigneeId, setNewSubtaskAssigneeId] = useState('');
+  const [subtaskAssigneeSearch, setSubtaskAssigneeSearch] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -48,12 +59,14 @@ export const ScrumTaskDetail: React.FC<Props> = ({ card, members, siblings }) =>
     setError('');
 
     try {
-      const [files, links] = await Promise.all([
+      const [files, links, subs] = await Promise.all([
         fetchAttachments(card.id),
-        fetchDependencies(card.id)
+        fetchDependencies(card.id),
+        fetchSubtasks(card.id)
       ]);
       setAttachments(files);
       setDependencies(links);
+      setSubtasks(subs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load task detail');
     }
@@ -70,6 +83,9 @@ export const ScrumTaskDetail: React.FC<Props> = ({ card, members, siblings }) =>
     try {
       await action();
       await load();
+      if (onSubtaskChange) {
+        onSubtaskChange();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That did not work');
     } finally {
@@ -93,6 +109,8 @@ export const ScrumTaskDetail: React.FC<Props> = ({ card, members, siblings }) =>
       !(dependencies?.blockedBy ?? []).some((link) => link.taskId === other.id)
   );
 
+  const completedSubtasksCount = subtasks.filter((st) => st.completed).length;
+
   return (
     <div className="mt-3 pt-3 border-t border-slate-100 space-y-4">
       {error && (
@@ -100,6 +118,144 @@ export const ScrumTaskDetail: React.FC<Props> = ({ card, members, siblings }) =>
           {error}
         </p>
       )}
+
+      {/* Sub-tasks */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <FiCheckSquare size={12} className="text-slate-400" aria-hidden="true" />
+            <h5 className={`${TYPE.eyebrow} text-slate-400`}>
+              Sub-tasks
+              {subtasks.length > 0 && (
+                <span className="normal-case text-slate-500 font-normal">
+                  {' '}· {completedSubtasksCount} of {subtasks.length} done
+                </span>
+              )}
+            </h5>
+          </div>
+          {subtasks.length > 0 && (
+            <span className={`${TYPE.meta} font-semibold text-slate-500`}>
+              {Math.round((completedSubtasksCount / subtasks.length) * 100)}%
+            </span>
+          )}
+        </div>
+
+        {subtasks.length > 0 && (
+          <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2.5 overflow-hidden">
+            <div
+              className="bg-emerald-500 h-1.5 rounded-full transition-all duration-300"
+              style={{ width: `${(completedSubtasksCount / subtasks.length) * 100}%` }}
+            />
+          </div>
+        )}
+
+        {subtasks.length === 0 ? (
+          <p className={`${TYPE.meta} text-slate-400 mb-2`}>No sub-tasks added yet.</p>
+        ) : (
+          <ul className="space-y-1.5 mb-2.5">
+            {subtasks.map((st) => (
+              <li
+                key={st.id}
+                className="flex items-center gap-2 py-1 px-2 rounded-lg hover:bg-slate-50 border border-slate-100/60 group transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={st.completed}
+                  onChange={() => void run(() => toggleSubtask(st.id))}
+                  disabled={busy}
+                  className="rounded text-emerald-600 focus:ring-emerald-500 h-3.5 w-3.5 cursor-pointer accent-emerald-600 shrink-0"
+                />
+                <span
+                  className={`${TYPE.meta} flex-1 text-slate-800 ${
+                    st.completed ? 'line-through text-slate-400' : ''
+                  }`}
+                >
+                  {st.title}
+                </span>
+
+                {st.assigneeName && (
+                  <span
+                    className={`${TYPE.code} px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0`}
+                    title={`Assigned to ${st.assigneeName}`}
+                  >
+                    {st.assigneeInitials}
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void run(() => deleteSubtask(st.id))}
+                  aria-label={`Delete subtask ${st.title}`}
+                  className="text-slate-300 hover:text-rose-600 cursor-pointer shrink-0 transition-colors
+                    focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
+                >
+                  <FiTrash2 size={11} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Add subtask form */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!newSubtaskTitle.trim()) return;
+            const title = newSubtaskTitle.trim();
+            const assigneeId = newSubtaskAssigneeId ? Number(newSubtaskAssigneeId) : null;
+            setNewSubtaskTitle('');
+            setNewSubtaskAssigneeId('');
+            void run(() => createSubtask(card.id, title, assigneeId));
+          }}
+          className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5"
+        >
+          <input
+            type="text"
+            value={newSubtaskTitle}
+            onChange={(e) => setNewSubtaskTitle(e.target.value)}
+            placeholder="Add a sub-task…"
+            className={`${TYPE.meta} ${FIELD.input} flex-1 py-1.5`}
+          />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <input
+              type="text"
+              placeholder="Search..."
+              value={subtaskAssigneeSearch}
+              onChange={(e) => setSubtaskAssigneeSearch(e.target.value)}
+              className={`${TYPE.meta} text-[11px] px-1.5 py-1 border border-slate-200 rounded bg-slate-50 focus:bg-white focus:outline-none focus:border-emerald-500 w-20`}
+            />
+            <select
+              value={newSubtaskAssigneeId}
+              onChange={(e) => setNewSubtaskAssigneeId(e.target.value)}
+              className={`${TYPE.meta} ${FIELD.select} py-1.5 min-w-[7.5rem]`}
+            >
+              <option value="">Unassigned</option>
+              {members
+                .filter((m) => {
+                  if (!subtaskAssigneeSearch.trim()) return true;
+                  const q = subtaskAssigneeSearch.toLowerCase();
+                  return (
+                    (m.name && m.name.toLowerCase().includes(q)) ||
+                    (m.email && m.email.toLowerCase().includes(q))
+                  );
+                })
+                .map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name || m.email}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="submit"
+              disabled={busy || !newSubtaskTitle.trim()}
+              className={`${TYPE.meta} ${FIELD.button} ${FIELD.primary} py-1.5 px-3 shrink-0`}
+            >
+              <FiPlus size={12} aria-hidden="true" /> Add
+            </button>
+          </div>
+        </form>
+      </section>
 
       {/* Dependencies */}
       <section>

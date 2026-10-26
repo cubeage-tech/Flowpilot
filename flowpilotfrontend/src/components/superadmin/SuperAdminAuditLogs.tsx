@@ -7,8 +7,7 @@ type FilterType =
   | 'This Week'
   | 'USER_CREATED'
   | 'PROJECT_UPDATED'
-  | 'SPRINT_STARTED'
-  | 'TIME_LOGGED';
+  | 'SPRINT_STARTED';
 
 interface AuditLog {
   id: number;
@@ -30,7 +29,6 @@ const filters: FilterType[] = [
   'USER_CREATED',
   'PROJECT_UPDATED',
   'SPRINT_STARTED',
-  'TIME_LOGGED',
 ];
 
 const getToken = () => {
@@ -66,6 +64,7 @@ const SuperAdminAuditLogs: React.FC = () => {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [streamVersion, setStreamVersion] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -127,7 +126,57 @@ const SuperAdminAuditLogs: React.FC = () => {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [activeFilter, search]);
+  }, [activeFilter, search, streamVersion]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const listenForAuditLogs = async () => {
+      const token = getToken();
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/stream`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (!controller.signal.aborted) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() ?? '';
+
+          for (const event of events) {
+            if (event.includes('event:audit-log') || event.includes('event: audit-log')) {
+              setStreamVersion((version) => version + 1);
+            }
+          }
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          console.error('Error listening for audit logs:', err);
+        }
+      }
+    };
+
+    listenForAuditLogs();
+    return () => controller.abort();
+  }, []);
 
   const filteredLogs = useMemo(() => {
     const query = search.trim().toLowerCase();

@@ -12,12 +12,17 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
-@Table(name = "pm_projects")
+@Table(name = "pm_projects", indexes = {
+    @Index(name = "idx_pm_project_code", columnList = "projectCode"),
+    @Index(name = "idx_pm_project_status", columnList = "status")
+})
 public class PMProject {
 
     @Id
@@ -63,6 +68,7 @@ public class PMProject {
                     foreignKey = @jakarta.persistence.ForeignKey(jakarta.persistence.ConstraintMode.NO_CONSTRAINT)
             )
     )
+    @BatchSize(size = 25)
     private List<SuperAdminUser> teamMembers = new ArrayList<>();
 
     public PMProject() {
