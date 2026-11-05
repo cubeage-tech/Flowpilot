@@ -1,2 +1,7 @@
 # Local design reference exports (Figma Make HTML snapshots) — not part of the build
 external/
+
+# Environment files
+**/.env
+**/.env*.local
+!**/.env.example
